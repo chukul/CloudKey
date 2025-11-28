@@ -466,30 +466,44 @@ class AWSService {
         var updatedSession = session
         let timestamp = Date().formatted(date: .omitted, time: .standard)
         
+        debugLog("Opening AWS Console for session: \(session.alias)")
         updatedSession.logs.append("[\(timestamp)] 🌐 Opening AWS Console...")
         
         guard session.status == .active else {
+            debugLog("Session not active, cannot open console")
             updatedSession.logs.append("[\(timestamp)] ❌ Session must be active to open console")
             return updatedSession
         }
         
+        debugLog("Session is active, profile: \(session.alias), region: \(session.region)")
+        debugLog("AWS CLI path: \(awsPath)")
+        
         // Use AWS CLI to generate console URL
         let script = """
         #!/bin/bash
+        set -x  # Enable debug output
         export AWS_PROFILE="\(session.alias)"
         export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
         
         echo "📋 Getting credentials for profile: \(session.alias)"
         
         # Get credentials
-        ACCESS_KEY=$(\(awsPath) configure get aws_access_key_id)
-        SECRET_KEY=$(\(awsPath) configure get aws_secret_access_key)
-        SESSION_TOKEN=$(\(awsPath) configure get aws_session_token)
+        ACCESS_KEY=$(\(awsPath) configure get aws_access_key_id --profile \(session.alias))
+        SECRET_KEY=$(\(awsPath) configure get aws_secret_access_key --profile \(session.alias))
+        SESSION_TOKEN=$(\(awsPath) configure get aws_session_token --profile \(session.alias))
         
         echo "🔑 Access Key: ${ACCESS_KEY:0:10}..."
+        echo "🔑 Has Secret Key: $([ -n "$SECRET_KEY" ] && echo "yes" || echo "no")"
+        echo "🔑 Has Session Token: $([ -n "$SESSION_TOKEN" ] && echo "yes" || echo "no")"
         
         if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
             echo "❌ Failed to get credentials from profile"
+            exit 1
+        fi
+        
+        # Check if jq is available
+        if ! command -v jq &> /dev/null; then
+            echo "❌ jq is not installed. Install with: brew install jq"
             exit 1
         fi
         
@@ -503,17 +517,23 @@ class AWSService {
         
         # URL encode and get signin token
         ENCODED_SESSION=$(echo -n "$SESSION_JSON" | jq -sRr @uri)
+        echo "📦 Encoded session length: ${#ENCODED_SESSION}"
+        
         SIGNIN_URL="https://signin.aws.amazon.com/federation?Action=getSigninToken&SessionDuration=43200&Session=$ENCODED_SESSION"
+        echo "🌐 Signin URL: ${SIGNIN_URL:0:100}..."
         
         # Get token
-        TOKEN=$(curl -s "$SIGNIN_URL" | jq -r '.SigninToken')
+        RESPONSE=$(curl -s "$SIGNIN_URL")
+        echo "📥 Response: $RESPONSE"
+        
+        TOKEN=$(echo "$RESPONSE" | jq -r '.SigninToken')
         
         echo "🎫 Token received: ${TOKEN:0:20}..."
         
         if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
             # Generate console URL with region
             CONSOLE_URL="https://signin.aws.amazon.com/federation?Action=login&Issuer=CloudKey&Destination=https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)&SigninToken=$TOKEN"
-            echo "🌐 Opening URL..."
+            echo "🌐 Opening URL: ${CONSOLE_URL:0:150}..."
             open "$CONSOLE_URL"
             echo "✅ Opened console in region \(session.region)"
         else
@@ -523,13 +543,19 @@ class AWSService {
         fi
         """
         
+        debugLog("Generated console script, length: \(script.count) bytes")
+        
         // Write script to temp file
         let tempDir = FileManager.default.temporaryDirectory
         let scriptPath = tempDir.appendingPathComponent("open-console-\(UUID().uuidString).sh")
         
+        debugLog("Script path: \(scriptPath.path)")
+        
         do {
             try script.write(to: scriptPath, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
+            
+            debugLog("Script written and made executable")
             
             // Execute script
             let process = Process()
@@ -540,10 +566,15 @@ class AWSService {
             process.standardOutput = pipe
             process.standardError = pipe
             
+            debugLog("Executing script...")
             try process.run()
             process.waitUntilExit()
             
+            debugLog("Script exit code: \(process.terminationStatus)")
+            
             let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            
+            debugLog("Script output length: \(output.count) bytes")
             
             // Log output
             for line in output.components(separatedBy: .newlines).filter({ !$0.isEmpty }) {
@@ -552,10 +583,13 @@ class AWSService {
             
             // Cleanup
             try? FileManager.default.removeItem(at: scriptPath)
+            debugLog("Cleaned up script file")
         } catch {
+            debugLog("Error opening console: \(error.localizedDescription)")
             updatedSession.logs.append("[\(timestamp)] ❌ Error: \(error.localizedDescription)")
         }
         
+        debugLog("openAWSConsole completed")
         return updatedSession
     }
 }
