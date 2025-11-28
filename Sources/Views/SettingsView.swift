@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("awsCliPath") private var awsCliPath = ""
+    @AppStorage("debugLogging") private var debugLogging = false
     @State private var cacheInfo = ""
     @State private var showClearConfirm = false
     
@@ -44,6 +45,28 @@ struct SettingsView: View {
                                 Image(systemName: "info.circle")
                                     .foregroundColor(.secondary)
                                 Text("Auto-detected: \(detectedPath)")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                    }
+                    .padding(4)
+                }
+                
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Image(systemName: "ladybug.fill")
+                                .foregroundColor(.accentColor)
+                            Text("Debug Options")
+                                .font(.headline)
+                        }
+                        
+                        Toggle(isOn: $debugLogging) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("Enable Debug Logging")
+                                    .font(.body)
+                                Text("Shows detailed AWS CLI commands and responses in Console tab")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }

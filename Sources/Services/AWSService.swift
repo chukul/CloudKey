@@ -7,6 +7,16 @@ class AWSService {
     // Cache for MFA session tokens
     private var sessionTokenCache: [String: (credentials: Credentials, expiration: Date)] = [:]
     
+    private var debugEnabled: Bool {
+        UserDefaults.standard.bool(forKey: "debugLogging")
+    }
+    
+    private func debugLog(_ message: String) {
+        if debugEnabled {
+            print("🔍 DEBUG: \(message)")
+        }
+    }
+    
     func hasCachedMFAToken(sourceProfile: String, mfaSerial: String) -> Bool {
         let cacheKey = "\(sourceProfile)-\(mfaSerial)"
         let now = Date()
@@ -178,28 +188,39 @@ class AWSService {
         case .assumedRole:
             // Construct command: aws sts assume-role --role-arn <arn> --role-session-name <name> --profile <source_profile>
             
+            debugLog("Starting assume role for session: \(session.alias)")
+            
             guard let roleArn = session.roleArn else {
                 let error = "[\(timestamp)] ❌ Error: Role ARN is missing"
                 updatedSession.logs.append(error)
                 throw NSError(domain: "AWSService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Role ARN is missing"])
             }
             
+            debugLog("Role ARN: \(roleArn)")
+            
             // Use profile alias as session name
             let sessionName = session.alias
             let sourceProfile = session.sourceProfile ?? session.profileName
             
+            debugLog("Session name: \(sessionName)")
+            debugLog("Source profile: \(sourceProfile)")
+            
             // Check if we need to use MFA session token
             var effectiveProfile = sourceProfile
             if let mfaSerial = session.mfaSerial {
+                debugLog("MFA Serial: \(mfaSerial)")
+                
                 let cacheKey = "\(sourceProfile)-\(mfaSerial)"
                 let now = Date()
                 
                 // Check cache first
                 if let cached = sessionTokenCache[cacheKey], cached.expiration > now.addingTimeInterval(300) {
                     // Use cached session token (valid for at least 5 more minutes)
+                    debugLog("Using cached MFA session token")
                     updatedSession.logs.append("[\(timestamp)] 🔄 Using cached MFA session token")
                     effectiveProfile = "\(sourceProfile)-mfa-session"
                 } else if let token = mfaToken {
+                    debugLog("Getting new MFA session token")
                     // Get new session token with MFA
                     updatedSession.logs.append("[\(timestamp)] 🔐 Getting MFA session token (valid for 12 hours)...")
                     
@@ -327,10 +348,19 @@ class AWSService {
         process.standardOutput = pipe
         process.standardError = pipe
         
+        debugLog("AWS CLI Path: \(awsPath)")
+        debugLog("Command: aws \(arguments.joined(separator: " "))")
+        
         try process.run()
         process.waitUntilExit()
         
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        
+        debugLog("Exit code: \(process.terminationStatus)")
+        if debugEnabled {
+            let output = String(data: data, encoding: .utf8) ?? ""
+            debugLog("Output: \(output)")
+        }
         
         if process.terminationStatus != 0 {
             let output = String(data: data, encoding: .utf8) ?? "Unknown error"
