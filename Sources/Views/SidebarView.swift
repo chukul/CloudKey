@@ -93,7 +93,10 @@ struct SidebarView: View {
                         SessionRow(session: session, onQuickAction: {
                             if session.status == .active {
                                 store.toggleSession(session)
-                            } else if session.mfaSerial != nil {
+                            } else if let mfaSerial = session.mfaSerial, 
+                                      let sourceProfile = session.sourceProfile,
+                                      !AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial) {
+                                // Only show MFA prompt if no cached token
                                 sessionToStart = session
                                 showMFAAlert = true
                             } else {
@@ -114,7 +117,9 @@ struct SidebarView: View {
                         SessionRow(session: session, onQuickAction: {
                             if session.status == .active {
                                 store.toggleSession(session)
-                            } else if session.mfaSerial != nil {
+                            } else if let mfaSerial = session.mfaSerial,
+                                      let sourceProfile = session.sourceProfile,
+                                      !AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial) {
                                 sessionToStart = session
                                 showMFAAlert = true
                             } else {
@@ -136,7 +141,9 @@ struct SidebarView: View {
                             SessionRow(session: session, onQuickAction: {
                                 if session.status == .active {
                                     store.toggleSession(session)
-                                } else if session.mfaSerial != nil {
+                                } else if let mfaSerial = session.mfaSerial,
+                                          let sourceProfile = session.sourceProfile,
+                                          !AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial) {
                                     sessionToStart = session
                                     showMFAAlert = true
                                 } else {
@@ -301,7 +308,9 @@ struct SidebarView: View {
         Button(action: { 
             if session.status == .active {
                 store.toggleSession(session)
-            } else if session.mfaSerial != nil {
+            } else if let mfaSerial = session.mfaSerial,
+                      let sourceProfile = session.sourceProfile,
+                      !AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial) {
                 sessionToStart = session
                 showMFAAlert = true
             } else {

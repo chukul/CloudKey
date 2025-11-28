@@ -7,6 +7,16 @@ class AWSService {
     // Cache for MFA session tokens
     private var sessionTokenCache: [String: (credentials: Credentials, expiration: Date)] = [:]
     
+    func hasCachedMFAToken(sourceProfile: String, mfaSerial: String) -> Bool {
+        let cacheKey = "\(sourceProfile)-\(mfaSerial)"
+        let now = Date()
+        
+        if let cached = sessionTokenCache[cacheKey], cached.expiration > now.addingTimeInterval(300) {
+            return true
+        }
+        return false
+    }
+    
     private var awsPath: String {
         if let customPath = UserDefaults.standard.string(forKey: "awsCliPath"), !customPath.isEmpty {
             return customPath
