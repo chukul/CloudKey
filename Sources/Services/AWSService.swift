@@ -63,18 +63,18 @@ class AWSService {
             let sessionName = session.alias
             let sourceProfile = session.sourceProfile ?? session.profileName
             
-            // Check if we need to get a session token first (for MFA)
+            // Check if we need to use MFA session token
             var effectiveProfile = sourceProfile
-            if let mfaSerial = session.mfaSerial, let token = mfaToken {
-                // Check cache first
+            if let mfaSerial = session.mfaSerial {
                 let cacheKey = "\(sourceProfile)-\(mfaSerial)"
                 let now = Date()
                 
+                // Check cache first
                 if let cached = sessionTokenCache[cacheKey], cached.expiration > now.addingTimeInterval(300) {
                     // Use cached session token (valid for at least 5 more minutes)
                     updatedSession.logs.append("[\(timestamp)] 🔄 Using cached MFA session token")
                     effectiveProfile = "\(sourceProfile)-mfa-session"
-                } else {
+                } else if let token = mfaToken {
                     // Get new session token with MFA
                     updatedSession.logs.append("[\(timestamp)] 🔐 Getting MFA session token (valid for 12 hours)...")
                     
@@ -106,6 +106,11 @@ class AWSService {
                         updatedSession.logs.append("[\(timestamp)] ❌ Failed to get session token: \(error.localizedDescription)")
                         throw error
                     }
+                } else {
+                    // No cached token and no MFA token provided - this shouldn't happen
+                    let error = "[\(timestamp)] ❌ Error: MFA token required but not provided"
+                    updatedSession.logs.append(error)
+                    throw NSError(domain: "AWSService", code: 1, userInfo: [NSLocalizedDescriptionKey: "MFA token required"])
                 }
             }
             
