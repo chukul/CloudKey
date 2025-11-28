@@ -91,9 +91,28 @@ struct DetailView: View {
                                 isStarting = false
                             }
                         } else {
-                            if session.mfaSerial != nil {
-                                showMFAAlert = true
+                            // Check if MFA is required and if we have cached token
+                            if let mfaSerial = session.mfaSerial,
+                               let sourceProfile = session.sourceProfile {
+                                let hasCached = AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial)
+                                print("🔍 UI (DetailView): Checking cache for \(session.alias), hasCached: \(hasCached)")
+                                
+                                if !hasCached {
+                                    // Show MFA prompt
+                                    showMFAAlert = true
+                                } else {
+                                    // Use cached token
+                                    print("🔍 UI (DetailView): Using cached token, calling toggleSession without MFA")
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        isStarting = true
+                                    }
+                                    store.toggleSession(session)
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                        isStarting = false
+                                    }
+                                }
                             } else {
+                                // No MFA required
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                                     isStarting = true
                                 }
