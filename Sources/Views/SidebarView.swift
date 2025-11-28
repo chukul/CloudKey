@@ -94,11 +94,19 @@ struct SidebarView: View {
                             if session.status == .active {
                                 store.toggleSession(session)
                             } else if let mfaSerial = session.mfaSerial, 
-                                      let sourceProfile = session.sourceProfile,
-                                      !AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial) {
-                                // Only show MFA prompt if no cached token
-                                sessionToStart = session
-                                showMFAAlert = true
+                                      let sourceProfile = session.sourceProfile {
+                                // Check cache
+                                let hasCached = AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial)
+                                print("🔍 UI: Checking cache for \(session.alias), hasCached: \(hasCached)")
+                                
+                                if !hasCached {
+                                    // Only show MFA prompt if no cached token
+                                    sessionToStart = session
+                                    showMFAAlert = true
+                                } else {
+                                    print("🔍 UI: Using cached token, calling toggleSession without MFA")
+                                    store.toggleSession(session)
+                                }
                             } else {
                                 store.toggleSession(session)
                             }

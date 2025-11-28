@@ -6,6 +6,67 @@ class AWSService {
     
     // Cache for MFA session tokens
     private var sessionTokenCache: [String: (credentials: Credentials, expiration: Date)] = [:]
+    private let mfaCachePath: URL
+    
+    init() {
+        // Setup MFA cache path
+        let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
+        let appSupport = paths[0].appendingPathComponent("CloudKey")
+        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+        mfaCachePath = appSupport.appendingPathComponent("mfa-cache.json")
+        
+        // Load cached MFA tokens from disk
+        loadMFACache()
+    }
+    
+    private func loadMFACache() {
+        guard FileManager.default.fileExists(atPath: mfaCachePath.path) else {
+            print("No MFA cache file found")
+            return
+        }
+        
+        do {
+            let data = try Data(contentsOf: mfaCachePath)
+            let decoder = JSONDecoder()
+            decoder.dateDecodingStrategy = .iso8601
+            
+            let cacheDict = try decoder.decode([String: CachedMFAToken].self, from: data)
+            
+            // Convert to internal format and filter expired
+            let now = Date()
+            for (key, cached) in cacheDict {
+                if cached.expiration > now {
+                    sessionTokenCache[key] = (cached.credentials, cached.expiration)
+                    print("✅ Loaded cached MFA token for \(key), expires: \(cached.expiration.formatted())")
+                } else {
+                    print("⏰ Skipped expired MFA token for \(key)")
+                }
+            }
+        } catch {
+            print("Failed to load MFA cache: \(error.localizedDescription)")
+        }
+    }
+    
+    private func saveMFACache() {
+        do {
+            // Convert to codable format
+            var cacheDict: [String: CachedMFAToken] = [:]
+            for (key, value) in sessionTokenCache {
+                cacheDict[key] = CachedMFAToken(credentials: value.credentials, expiration: value.expiration)
+            }
+            
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            encoder.outputFormatting = .prettyPrinted
+            
+            let data = try encoder.encode(cacheDict)
+            try data.write(to: mfaCachePath, options: [.atomic])
+            
+            print("✅ Saved MFA cache to disk (\(sessionTokenCache.count) entries)")
+        } catch {
+            print("Failed to save MFA cache: \(error.localizedDescription)")
+        }
+    }
     
     private var debugEnabled: Bool {
         UserDefaults.standard.bool(forKey: "debugLogging")
@@ -21,16 +82,32 @@ class AWSService {
         let cacheKey = "\(sourceProfile)-\(mfaSerial)"
         let now = Date()
         
-        if let cached = sessionTokenCache[cacheKey], cached.expiration > now.addingTimeInterval(300) {
-            return true
+        debugLog("Checking MFA cache for key: \(cacheKey)")
+        debugLog("Cache contains \(sessionTokenCache.count) entries")
+        
+        if let cached = sessionTokenCache[cacheKey] {
+            let remaining = cached.expiration.timeIntervalSince(now)
+            debugLog("Found cached token, expires in \(Int(remaining/60)) minutes")
+            
+            if cached.expiration > now.addingTimeInterval(300) {
+                debugLog("Cache is valid (more than 5 minutes remaining)")
+                return true
+            } else {
+                debugLog("Cache expired or expiring soon")
+                return false
+            }
+        } else {
+            debugLog("No cached token found for this key")
+            debugLog("Available cache keys: \(sessionTokenCache.keys.joined(separator: ", "))")
+            return false
         }
-        return false
     }
     
     // For testing: clear MFA cache
     func clearMFACache() {
         sessionTokenCache.removeAll()
-        print("🧹 MFA session token cache cleared")
+        try? FileManager.default.removeItem(at: mfaCachePath)
+        print("🧹 MFA session token cache cleared (memory and disk)")
     }
     
     // For testing: get cache info
@@ -241,6 +318,7 @@ class AWSService {
                         
                         // Cache the session token
                         sessionTokenCache[cacheKey] = (sessionResponse.Credentials, sessionResponse.Credentials.Expiration)
+                        saveMFACache()
                         
                         // Write session token to a temporary profile
                         effectiveProfile = "\(sourceProfile)-mfa-session"
@@ -527,4 +605,9 @@ struct Credentials: Codable {
     let SecretAccessKey: String
     let SessionToken: String
     let Expiration: Date
+}
+
+struct CachedMFAToken: Codable {
+    let credentials: Credentials
+    let expiration: Date
 }
