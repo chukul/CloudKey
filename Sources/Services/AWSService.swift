@@ -17,6 +17,28 @@ class AWSService {
         return false
     }
     
+    // For testing: clear MFA cache
+    func clearMFACache() {
+        sessionTokenCache.removeAll()
+        print("🧹 MFA session token cache cleared")
+    }
+    
+    // For testing: get cache info
+    func getMFACacheInfo() -> String {
+        if sessionTokenCache.isEmpty {
+            return "No cached MFA tokens"
+        }
+        
+        var info = "Cached MFA tokens:\n"
+        for (key, value) in sessionTokenCache {
+            let remaining = value.expiration.timeIntervalSince(Date())
+            let hours = Int(remaining / 3600)
+            let minutes = Int((remaining.truncatingRemainder(dividingBy: 3600)) / 60)
+            info += "  • \(key): expires in \(hours)h \(minutes)m\n"
+        }
+        return info
+    }
+    
     private var awsPath: String {
         if let customPath = UserDefaults.standard.string(forKey: "awsCliPath"), !customPath.isEmpty {
             return customPath

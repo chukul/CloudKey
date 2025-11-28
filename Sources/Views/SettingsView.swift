@@ -2,6 +2,8 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("awsCliPath") private var awsCliPath = ""
+    @State private var cacheInfo = ""
+    @State private var showClearConfirm = false
     
     private var detectedPath: String {
         let possiblePaths = [
@@ -49,8 +51,48 @@ struct SettingsView: View {
                     }
                     .padding(4)
                 }
+                
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 16) {
+                        HStack {
+                            Image(systemName: "lock.shield.fill")
+                                .foregroundColor(.accentColor)
+                            Text("MFA Session Cache")
+                                .font(.headline)
+                        }
+                        
+                        Text(cacheInfo.isEmpty ? "No cached MFA tokens" : cacheInfo)
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        
+                        HStack {
+                            Button("Refresh Info") {
+                                cacheInfo = AWSService.shared.getMFACacheInfo()
+                            }
+                            
+                            Button("Clear Cache") {
+                                showClearConfirm = true
+                            }
+                            .foregroundColor(.red)
+                        }
+                    }
+                    .padding(4)
+                }
+                .alert("Clear MFA Cache?", isPresented: $showClearConfirm) {
+                    Button("Cancel", role: .cancel) {}
+                    Button("Clear", role: .destructive) {
+                        AWSService.shared.clearMFACache()
+                        cacheInfo = "Cache cleared"
+                    }
+                } message: {
+                    Text("You will need to enter MFA again for the next assume-role operation.")
+                }
             }
             .formStyle(.grouped)
+            .onAppear {
+                cacheInfo = AWSService.shared.getMFACacheInfo()
+            }
             .tabItem {
                 Label("General", systemImage: "gear")
             }
