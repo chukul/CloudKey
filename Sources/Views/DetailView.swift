@@ -390,6 +390,7 @@ struct InfoRow: View {
 struct ConsoleTab: View {
     let session: Session
     @State private var highlightedIndex: Int?
+    @EnvironmentObject var store: SessionStore
     
     var body: some View {
         ScrollView {
@@ -406,6 +407,16 @@ struct ConsoleTab: View {
                             Text("\(session.logs.count) entries")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
+                            
+                            Button(action: {
+                                var updatedSession = session
+                                updatedSession.logs.removeAll()
+                                store.updateSession(updatedSession)
+                            }) {
+                                Label("Clear", systemImage: "trash")
+                                    .font(.caption)
+                            }
+                            .buttonStyle(.borderless)
                             
                             Button(action: {
                                 NSPasteboard.general.clearContents()

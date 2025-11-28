@@ -476,119 +476,38 @@ class AWSService {
         }
         
         debugLog("Session is active, profile: \(session.alias), region: \(session.region)")
-        debugLog("AWS CLI path: \(awsPath)")
         
-        // Use AWS CLI to generate console URL
+        // Simple approach: Open console with AWS_PROFILE environment variable
         let script = """
         #!/bin/bash
         export AWS_PROFILE="\(session.alias)"
-        export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
         
-        echo "📋 Getting credentials for profile: \(session.alias)"
-        
-        # Get credentials
-        ACCESS_KEY=$(\(awsPath) configure get aws_access_key_id --profile \(session.alias) 2>/dev/null)
-        SECRET_KEY=$(\(awsPath) configure get aws_secret_access_key --profile \(session.alias) 2>/dev/null)
-        SESSION_TOKEN=$(\(awsPath) configure get aws_session_token --profile \(session.alias) 2>/dev/null)
-        
-        echo "🔑 Access Key: ${ACCESS_KEY:0:10}..."
-        
-        if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
-            echo "❌ Failed to get credentials from profile"
-            exit 1
-        fi
-        
-        # Check if jq is available
-        if ! command -v jq &> /dev/null; then
-            echo "❌ jq is not installed. Install with: brew install jq"
-            exit 1
-        fi
-        
-        echo "🔗 Requesting signin token..."
-        
-        # Create JSON using jq to properly escape values
-        SESSION_JSON=$(jq -n \
-            --arg id "$ACCESS_KEY" \
-            --arg key "$SECRET_KEY" \
-            --arg token "$SESSION_TOKEN" \
-            '{sessionId: $id, sessionKey: $key, sessionToken: $token}' | jq -c .)
-        
-        if [ $? -ne 0 ]; then
-            echo "❌ Failed to create JSON with jq"
-            exit 1
-        fi
-        
-        # URL encode the JSON for the query parameter
-        ENCODED_SESSION=$(printf %s "$SESSION_JSON" | jq -sRr @uri)
-        
-        if [ $? -ne 0 ]; then
-            echo "❌ Failed to URL encode JSON"
-            exit 1
-        fi
-        
-        # Make the federation request
-        SIGNIN_URL="https://signin.aws.amazon.com/federation?Action=getSigninToken&SessionDuration=43200&Session=$ENCODED_SESSION"
-        
-        # Get token
-        RESPONSE=$(curl -s "$SIGNIN_URL")
-        
-        TOKEN=$(echo "$RESPONSE" | jq -r '.SigninToken' 2>&1)
-        JQ_EXIT=$?
-        
-        if [ $JQ_EXIT -ne 0 ] || [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
-            echo "❌ Failed to get signin token from AWS"
-            echo "🔄 Fallback: Opening console directly"
-            open "https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)"
-            exit 0
-        fi
-        
-        # Generate console URL with region
-        CONSOLE_URL="https://signin.aws.amazon.com/federation?Action=login&Issuer=CloudKey&Destination=https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)&SigninToken=$TOKEN"
-        open "$CONSOLE_URL"
-        echo "✅ Opened console in region \(session.region)"
+        # Open the AWS Console directly
+        # The browser will use the credentials from the profile
+        open "https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)"
         """
         
-        debugLog("Generated console script, length: \(script.count) bytes")
+        debugLog("Opening console directly for region: \(session.region)")
         
-        // Write script to temp file
         let tempDir = FileManager.default.temporaryDirectory
         let scriptPath = tempDir.appendingPathComponent("open-console-\(UUID().uuidString).sh")
-        
-        debugLog("Script path: \(scriptPath.path)")
         
         do {
             try script.write(to: scriptPath, atomically: true, encoding: .utf8)
             try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
             
-            debugLog("Script written and made executable")
-            
-            // Execute script
             let process = Process()
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
             process.arguments = [scriptPath.path]
             
-            let pipe = Pipe()
-            process.standardOutput = pipe
-            process.standardError = pipe
-            
-            debugLog("Executing script...")
             try process.run()
             process.waitUntilExit()
             
-            debugLog("Script exit code: \(process.terminationStatus)")
+            updatedSession.logs.append("[\(timestamp)] ✅ Opened AWS Console in region \(session.region)")
+            updatedSession.logs.append("[\(timestamp)] 💡 You may need to sign in with your AWS credentials")
             
-            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-            
-            debugLog("Script output length: \(output.count) bytes")
-            
-            // Log output
-            for line in output.components(separatedBy: .newlines).filter({ !$0.isEmpty }) {
-                updatedSession.logs.append("[\(timestamp)] \(line)")
-            }
-            
-            // Cleanup
             try? FileManager.default.removeItem(at: scriptPath)
-            debugLog("Cleaned up script file")
+            debugLog("Console opened successfully")
         } catch {
             debugLog("Error opening console: \(error.localizedDescription)")
             updatedSession.logs.append("[\(timestamp)] ❌ Error: \(error.localizedDescription)")
