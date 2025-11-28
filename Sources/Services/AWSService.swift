@@ -481,20 +481,17 @@ class AWSService {
         // Use AWS CLI to generate console URL
         let script = """
         #!/bin/bash
-        set -x  # Enable debug output
         export AWS_PROFILE="\(session.alias)"
         export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
         
         echo "📋 Getting credentials for profile: \(session.alias)"
         
         # Get credentials
-        ACCESS_KEY=$(\(awsPath) configure get aws_access_key_id --profile \(session.alias))
-        SECRET_KEY=$(\(awsPath) configure get aws_secret_access_key --profile \(session.alias))
-        SESSION_TOKEN=$(\(awsPath) configure get aws_session_token --profile \(session.alias))
+        ACCESS_KEY=$(\(awsPath) configure get aws_access_key_id --profile \(session.alias) 2>/dev/null)
+        SECRET_KEY=$(\(awsPath) configure get aws_secret_access_key --profile \(session.alias) 2>/dev/null)
+        SESSION_TOKEN=$(\(awsPath) configure get aws_session_token --profile \(session.alias) 2>/dev/null)
         
         echo "🔑 Access Key: ${ACCESS_KEY:0:10}..."
-        echo "🔑 Has Secret Key: $([ -n "$SECRET_KEY" ] && echo "yes" || echo "no")"
-        echo "🔑 Has Session Token: $([ -n "$SESSION_TOKEN" ] && echo "yes" || echo "no")"
         
         if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
             echo "❌ Failed to get credentials from profile"
@@ -517,23 +514,14 @@ class AWSService {
         
         # URL encode and get signin token
         ENCODED_SESSION=$(echo -n "$SESSION_JSON" | jq -sRr @uri)
-        echo "📦 Encoded session length: ${#ENCODED_SESSION}"
-        
         SIGNIN_URL="https://signin.aws.amazon.com/federation?Action=getSigninToken&SessionDuration=43200&Session=$ENCODED_SESSION"
-        echo "🌐 Signin URL: ${SIGNIN_URL:0:100}..."
         
         # Get token
-        RESPONSE=$(curl -s "$SIGNIN_URL")
-        echo "📥 Response: $RESPONSE"
-        
-        TOKEN=$(echo "$RESPONSE" | jq -r '.SigninToken')
-        
-        echo "🎫 Token received: ${TOKEN:0:20}..."
+        TOKEN=$(curl -s "$SIGNIN_URL" | jq -r '.SigninToken')
         
         if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
             # Generate console URL with region
             CONSOLE_URL="https://signin.aws.amazon.com/federation?Action=login&Issuer=CloudKey&Destination=https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)&SigninToken=$TOKEN"
-            echo "🌐 Opening URL: ${CONSOLE_URL:0:150}..."
             open "$CONSOLE_URL"
             echo "✅ Opened console in region \(session.region)"
         else
