@@ -475,121 +475,45 @@ class AWSService {
             return updatedSession
         }
         
-        // Get credentials from the credentials file
-        let credentialsPath = self.credentialsURL
-        guard FileManager.default.fileExists(atPath: credentialsPath.path) else {
-            updatedSession.logs.append("[\(timestamp)] ❌ Credentials file not found")
-            return updatedSession
-        }
+        debugLog("Session is active, profile: \(session.alias), region: \(session.region)")
+        
+        // Simple approach: Open console with AWS_PROFILE environment variable
+        let script = """
+        #!/bin/bash
+        export AWS_PROFILE="\(session.alias)"
+        
+        # Open the AWS Console directly
+        # The browser will use the credentials from the profile
+        open "https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)"
+        """
+        
+        debugLog("Opening console directly for region: \(session.region)")
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let scriptPath = tempDir.appendingPathComponent("open-console-\(UUID().uuidString).sh")
         
         do {
-            let content = try String(contentsOf: credentialsPath, encoding: .utf8)
-            let lines = content.components(separatedBy: .newlines)
+            try script.write(to: scriptPath, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: scriptPath.path)
             
-            // Find the profile section
-            guard let profileIndex = lines.firstIndex(of: "[\(session.alias)]") else {
-                updatedSession.logs.append("[\(timestamp)] ❌ Profile not found in credentials")
-                return updatedSession
-            }
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: "/bin/bash")
+            process.arguments = [scriptPath.path]
             
-            // Extract credentials
-            var accessKey = ""
-            var secretKey = ""
-            var sessionToken = ""
+            try process.run()
+            process.waitUntilExit()
             
-            var i = profileIndex + 1
-            while i < lines.count && !lines[i].hasPrefix("[") {
-                let line = lines[i].trimmingCharacters(in: .whitespaces)
-                if line.hasPrefix("aws_access_key_id") {
-                    accessKey = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
-                } else if line.hasPrefix("aws_secret_access_key") {
-                    secretKey = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
-                } else if line.hasPrefix("aws_session_token") {
-                    sessionToken = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
-                }
-                i += 1
-            }
+            updatedSession.logs.append("[\(timestamp)] ✅ Opened AWS Console in region \(session.region)")
+            updatedSession.logs.append("[\(timestamp)] 💡 You may need to sign in with your AWS credentials")
             
-            guard !accessKey.isEmpty && !secretKey.isEmpty else {
-                updatedSession.logs.append("[\(timestamp)] ❌ Credentials not found")
-                return updatedSession
-            }
-            
-            updatedSession.logs.append("[\(timestamp)] 🔑 Retrieved credentials")
-            
-            // Create session JSON for federation
-            let sessionDict: [String: String] = [
-                "sessionId": accessKey,
-                "sessionKey": secretKey,
-                "sessionToken": sessionToken
-            ]
-            
-            let jsonData = try JSONSerialization.data(withJSONObject: sessionDict, options: [])
-            let sessionString = String(data: jsonData, encoding: .utf8) ?? ""
-            
-            // URL encode the session
-            guard let encodedSession = sessionString.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-                updatedSession.logs.append("[\(timestamp)] ❌ Failed to encode session")
-                return updatedSession
-            }
-            
-            updatedSession.logs.append("[\(timestamp)] 🔗 Requesting federation token...")
-            
-            // Request signin token from AWS Federation endpoint
-            let federationURL = "https://signin.aws.amazon.com/federation?Action=getSigninToken&SessionDuration=43200&Session=\(encodedSession)"
-            
-            guard let url = URL(string: federationURL) else {
-                updatedSession.logs.append("[\(timestamp)] ❌ Invalid federation URL")
-                return updatedSession
-            }
-            
-            let (data, response) = try await URLSession.shared.data(from: url)
-            
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 0
-                updatedSession.logs.append("[\(timestamp)] ❌ Federation request failed: HTTP \(statusCode)")
-                
-                // Fallback to direct console
-                updatedSession.logs.append("[\(timestamp)] 🔄 Opening console directly")
-                let consoleURL = "https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)"
-                if let url = URL(string: consoleURL) {
-                    await MainActor.run {
-                        NSWorkspace.shared.open(url)
-                    }
-                }
-                return updatedSession
-            }
-            
-            // Parse the signin token
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            guard let signinToken = json?["SigninToken"] as? String else {
-                updatedSession.logs.append("[\(timestamp)] ❌ No signin token in response")
-                return updatedSession
-            }
-            
-            updatedSession.logs.append("[\(timestamp)] ✅ Got federation token")
-            
-            // Create console URL with signin token
-            let destination = "https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)"
-            guard let encodedDestination = destination.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) else {
-                updatedSession.logs.append("[\(timestamp)] ❌ Failed to encode destination")
-                return updatedSession
-            }
-            
-            let consoleURL = "https://signin.aws.amazon.com/federation?Action=login&Issuer=CloudKey&Destination=\(encodedDestination)&SigninToken=\(signinToken)"
-            
-            if let url = URL(string: consoleURL) {
-                await MainActor.run {
-                    NSWorkspace.shared.open(url)
-                }
-                updatedSession.logs.append("[\(timestamp)] ✅ Opened AWS Console")
-            }
-            
+            try? FileManager.default.removeItem(at: scriptPath)
+            debugLog("Console opened successfully")
         } catch {
-            debugLog("Error: \(error.localizedDescription)")
+            debugLog("Error opening console: \(error.localizedDescription)")
             updatedSession.logs.append("[\(timestamp)] ❌ Error: \(error.localizedDescription)")
         }
         
+        debugLog("openAWSConsole completed")
         return updatedSession
     }
 }
