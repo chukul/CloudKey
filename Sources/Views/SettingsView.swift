@@ -1,7 +1,22 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("awsCliPath") private var awsCliPath = "/usr/local/bin/aws"
+    @AppStorage("awsCliPath") private var awsCliPath = ""
+    
+    private var detectedPath: String {
+        let possiblePaths = [
+            "/opt/homebrew/bin/aws",
+            "/usr/local/bin/aws",
+            "/usr/bin/aws"
+        ]
+        
+        for path in possiblePaths {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+        return "/usr/local/bin/aws"
+    }
     
     var body: some View {
         TabView {
@@ -20,13 +35,13 @@ struct SettingsView: View {
                                 .font(.subheadline)
                                 .foregroundColor(.secondary)
                             
-                            TextField("Path to AWS CLI", text: $awsCliPath)
+                            TextField("Leave empty for auto-detect", text: $awsCliPath)
                                 .textFieldStyle(.roundedBorder)
                             
                             HStack {
                                 Image(systemName: "info.circle")
                                     .foregroundColor(.secondary)
-                                Text("Auto-detected: /opt/homebrew/bin/aws or /usr/local/bin/aws")
+                                Text("Auto-detected: \(detectedPath)")
                                     .font(.caption)
                                     .foregroundColor(.secondary)
                             }

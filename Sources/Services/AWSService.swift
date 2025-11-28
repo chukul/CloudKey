@@ -40,15 +40,25 @@ class AWSService {
         case .assumedRole:
             // Construct command: aws sts assume-role --role-arn <arn> --role-session-name <name> --profile <source_profile>
             
+            print("🔍 DEBUG: Starting assume role for session: \(session.alias)")
+            
             guard let roleArn = session.roleArn else {
                 let error = "[\(timestamp)] ❌ Error: Role ARN is missing"
                 updatedSession.logs.append(error)
+                print("🔍 DEBUG: \(error)")
                 throw NSError(domain: "AWSService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Role ARN is missing"])
             }
+            
+            print("🔍 DEBUG: Role ARN: \(roleArn)")
             
             // Use profile alias as session name (AWS will prepend role name automatically)
             let sessionName = session.alias
             let sourceProfile = session.sourceProfile ?? session.profileName
+            
+            print("🔍 DEBUG: Session name: \(sessionName)")
+            print("🔍 DEBUG: Source profile: \(sourceProfile)")
+            print("🔍 DEBUG: MFA Serial: \(session.mfaSerial ?? "none")")
+            print("🔍 DEBUG: MFA Token provided: \(mfaToken != nil)")
             
             var args = [
                 "sts", "assume-role",
@@ -67,12 +77,18 @@ class AWSService {
             
             let command = "aws " + args.joined(separator: " ")
             updatedSession.logs.append("[\(timestamp)] 🔄 Executing: \(command)")
+            print("🔍 DEBUG: Full command: \(command)")
             
             do {
                 let data = try await runAWSCommand(args)
+                print("🔍 DEBUG: Got response data, length: \(data.count)")
+                
                 let decoder = JSONDecoder()
                 decoder.dateDecodingStrategy = .iso8601
                 let response = try decoder.decode(STSResponse.self, from: data)
+                
+                print("🔍 DEBUG: Successfully decoded STS response")
+                print("🔍 DEBUG: Access Key: \(response.Credentials.AccessKeyId.prefix(10))...")
                 
                 // Update ~/.aws/credentials
                 try updateCredentialsFile(profile: session.alias, credentials: response.Credentials)
@@ -83,8 +99,11 @@ class AWSService {
                 updatedSession.logs.append("[\(timestamp)] ✅ Successfully assumed role")
                 updatedSession.logs.append("[\(timestamp)] 📝 Updated credentials file: ~/.aws/credentials")
                 updatedSession.logs.append("[\(timestamp)] ⏰ Session expires: \(response.Credentials.Expiration.formatted())")
+                print("🔍 DEBUG: Assume role completed successfully")
             } catch {
-                updatedSession.logs.append("[\(timestamp)] ❌ Error: \(error.localizedDescription)")
+                let errorMsg = "[\(timestamp)] ❌ Error: \(error.localizedDescription)"
+                updatedSession.logs.append(errorMsg)
+                print("🔍 DEBUG: \(errorMsg)")
                 throw error
             }
             
@@ -140,13 +159,19 @@ class AWSService {
         process.standardOutput = pipe
         process.standardError = pipe
         
+        print("🔍 DEBUG: AWS CLI Path: \(awsPath)")
+        print("🔍 DEBUG: Command: aws \(arguments.joined(separator: " "))")
+        
         try process.run()
         process.waitUntilExit()
         
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        let output = String(data: data, encoding: .utf8) ?? ""
+        
+        print("🔍 DEBUG: Exit code: \(process.terminationStatus)")
+        print("🔍 DEBUG: Output: \(output)")
         
         if process.terminationStatus != 0 {
-            let output = String(data: data, encoding: .utf8) ?? "Unknown error"
             throw NSError(domain: "AWSService", code: Int(process.terminationStatus), userInfo: [NSLocalizedDescriptionKey: output])
         }
         

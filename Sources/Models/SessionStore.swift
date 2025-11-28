@@ -13,7 +13,17 @@ class SessionStore: ObservableObject {
     init() {
         let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
         let appSupport = paths[0].appendingPathComponent("CloudKey")
-        try? FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true)
+        
+        // Create directory with proper permissions
+        do {
+            if !FileManager.default.fileExists(atPath: appSupport.path) {
+                try FileManager.default.createDirectory(at: appSupport, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+                print("Created CloudKey data directory: \(appSupport.path)")
+            }
+        } catch {
+            print("Warning: Could not create data directory: \(error.localizedDescription)")
+        }
+        
         savePath = appSupport.appendingPathComponent("sessions.json")
         recentPath = appSupport.appendingPathComponent("recent.json")
         
@@ -78,7 +88,15 @@ class SessionStore: ObservableObject {
     func save() {
         do {
             let data = try JSONEncoder().encode(sessions)
-            try data.write(to: savePath, options: [.atomic, .completeFileProtection])
+            
+            // Ensure directory exists with proper permissions
+            let directory = savePath.deletingLastPathComponent()
+            if !FileManager.default.fileExists(atPath: directory.path) {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+            }
+            
+            // Write with proper options
+            try data.write(to: savePath, options: [.atomic])
         } catch {
             print("Failed to save sessions: \(error.localizedDescription)")
         }
@@ -136,7 +154,15 @@ class SessionStore: ObservableObject {
     private func saveRecent() {
         do {
             let data = try JSONEncoder().encode(recentSessionIds)
-            try data.write(to: recentPath, options: [.atomic, .completeFileProtection])
+            
+            // Ensure directory exists with proper permissions
+            let directory = recentPath.deletingLastPathComponent()
+            if !FileManager.default.fileExists(atPath: directory.path) {
+                try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o755])
+            }
+            
+            // Write with proper options
+            try data.write(to: recentPath, options: [.atomic])
         } catch {
             print("Failed to save recent sessions: \(error.localizedDescription)")
         }
