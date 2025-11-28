@@ -511,25 +511,41 @@ class AWSService {
             --arg id "$ACCESS_KEY" \
             --arg key "$SECRET_KEY" \
             --arg token "$SESSION_TOKEN" \
-            '{sessionId: $id, sessionKey: $key, sessionToken: $token}')
+            '{sessionId: $id, sessionKey: $key, sessionToken: $token}' | jq -c .)
         
-        # URL encode the JSON
-        ENCODED_SESSION=$(echo -n "$SESSION_JSON" | jq -sRr @uri)
+        if [ $? -ne 0 ]; then
+            echo "❌ Failed to create JSON with jq"
+            exit 1
+        fi
+        
+        # URL encode the JSON for the query parameter
+        ENCODED_SESSION=$(printf %s "$SESSION_JSON" | jq -sRr @uri)
+        
+        if [ $? -ne 0 ]; then
+            echo "❌ Failed to URL encode JSON"
+            exit 1
+        fi
+        
+        # Make the federation request
         SIGNIN_URL="https://signin.aws.amazon.com/federation?Action=getSigninToken&SessionDuration=43200&Session=$ENCODED_SESSION"
         
         # Get token
-        TOKEN=$(curl -s "$SIGNIN_URL" | jq -r '.SigninToken')
+        RESPONSE=$(curl -s "$SIGNIN_URL")
         
-        if [ -n "$TOKEN" ] && [ "$TOKEN" != "null" ]; then
-            # Generate console URL with region
-            CONSOLE_URL="https://signin.aws.amazon.com/federation?Action=login&Issuer=CloudKey&Destination=https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)&SigninToken=$TOKEN"
-            open "$CONSOLE_URL"
-            echo "✅ Opened console in region \(session.region)"
-        else
-            echo "❌ Failed to get signin token"
+        TOKEN=$(echo "$RESPONSE" | jq -r '.SigninToken' 2>&1)
+        JQ_EXIT=$?
+        
+        if [ $JQ_EXIT -ne 0 ] || [ "$TOKEN" = "null" ] || [ -z "$TOKEN" ]; then
+            echo "❌ Failed to get signin token from AWS"
             echo "🔄 Fallback: Opening console directly"
             open "https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)"
+            exit 0
         fi
+        
+        # Generate console URL with region
+        CONSOLE_URL="https://signin.aws.amazon.com/federation?Action=login&Issuer=CloudKey&Destination=https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)&SigninToken=$TOKEN"
+        open "$CONSOLE_URL"
+        echo "✅ Opened console in region \(session.region)"
         """
         
         debugLog("Generated console script, length: \(script.count) bytes")
