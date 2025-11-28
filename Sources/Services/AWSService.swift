@@ -82,6 +82,7 @@ class AWSService {
                 updatedSession.accessKeyId = response.Credentials.AccessKeyId
                 updatedSession.logs.append("[\(timestamp)] ✅ Successfully assumed role")
                 updatedSession.logs.append("[\(timestamp)] 📝 Updated credentials file: ~/.aws/credentials")
+                updatedSession.logs.append("[\(timestamp)] 🎯 Set as default profile - you can now use AWS CLI without --profile")
                 updatedSession.logs.append("[\(timestamp)] ⏰ Session expires: \(response.Credentials.Expiration.formatted())")
             } catch {
                 let errorMsg = "[\(timestamp)] ❌ Error: \(error.localizedDescription)"
@@ -117,6 +118,8 @@ class AWSService {
         // Remove the profile from credentials file
         do {
             try removeProfileFromCredentials(profile: session.alias)
+            // Also remove [default] if it matches this session
+            try removeDefaultIfMatches(profile: session.alias)
             updatedSession.logs.append("[\(timestamp)] ✅ Removed credentials from ~/.aws/credentials")
         } catch {
             updatedSession.logs.append("[\(timestamp)] ⚠️ Warning: \(error.localizedDescription)")
@@ -154,7 +157,7 @@ class AWSService {
         return data
     }
     
-    private func updateCredentialsFile(profile: String, credentials: Credentials) throws {
+    private func updateCredentialsFile(profile: String, credentials: Credentials, setAsDefault: Bool = true) throws {
         let credentialsPath = self.credentialsURL
         
         var content = ""
@@ -165,7 +168,7 @@ class AWSService {
         // Simple INI parser/updater
         var lines = content.components(separatedBy: .newlines)
         
-        // Remove existing section if present
+        // Remove existing profile section if present
         if let startIndex = lines.firstIndex(of: "[\(profile)]") {
             var endIndex = startIndex + 1
             while endIndex < lines.count && !lines[endIndex].hasPrefix("[") {
@@ -174,12 +177,32 @@ class AWSService {
             lines.removeSubrange(startIndex..<endIndex)
         }
         
-        // Append new section
+        // Remove existing [default] section if we're setting as default
+        if setAsDefault {
+            if let startIndex = lines.firstIndex(of: "[default]") {
+                var endIndex = startIndex + 1
+                while endIndex < lines.count && !lines[endIndex].hasPrefix("[") {
+                    endIndex += 1
+                }
+                lines.removeSubrange(startIndex..<endIndex)
+            }
+        }
+        
+        // Append profile section
         lines.append("[\(profile)]")
         lines.append("aws_access_key_id = \(credentials.AccessKeyId)")
         lines.append("aws_secret_access_key = \(credentials.SecretAccessKey)")
         lines.append("aws_session_token = \(credentials.SessionToken)")
         lines.append("") // Empty line
+        
+        // Also set as [default] for convenience
+        if setAsDefault {
+            lines.append("[default]")
+            lines.append("aws_access_key_id = \(credentials.AccessKeyId)")
+            lines.append("aws_secret_access_key = \(credentials.SecretAccessKey)")
+            lines.append("aws_session_token = \(credentials.SessionToken)")
+            lines.append("") // Empty line
+        }
         
         let newContent = lines.joined(separator: "\n")
         try newContent.write(to: credentialsPath, atomically: true, encoding: .utf8)
@@ -194,6 +217,27 @@ class AWSService {
         var lines = content.components(separatedBy: .newlines)
         
         if let startIndex = lines.firstIndex(of: "[\(profile)]") {
+            var endIndex = startIndex + 1
+            while endIndex < lines.count && !lines[endIndex].hasPrefix("[") {
+                endIndex += 1
+            }
+            lines.removeSubrange(startIndex..<endIndex)
+            
+            let newContent = lines.joined(separator: "\n")
+            try newContent.write(to: credentialsPath, atomically: true, encoding: .utf8)
+        }
+    }
+    
+    private func removeDefaultIfMatches(profile: String) throws {
+        let credentialsPath = self.credentialsURL
+        
+        guard FileManager.default.fileExists(atPath: credentialsPath.path) else { return }
+        
+        let content = try String(contentsOf: credentialsPath, encoding: .utf8)
+        var lines = content.components(separatedBy: .newlines)
+        
+        // Remove [default] section
+        if let startIndex = lines.firstIndex(of: "[default]") {
             var endIndex = startIndex + 1
             while endIndex < lines.count && !lines[endIndex].hasPrefix("[") {
                 endIndex += 1
