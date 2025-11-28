@@ -39,6 +39,109 @@ class AWSService {
         return info
     }
     
+    func setAsDefaultProfile(_ session: Session) throws {
+        guard session.status == .active else {
+            throw NSError(domain: "AWSService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Only active sessions can be set as default"])
+        }
+        
+        let credentialsPath = self.credentialsURL
+        guard FileManager.default.fileExists(atPath: credentialsPath.path) else {
+            throw NSError(domain: "AWSService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Credentials file not found"])
+        }
+        
+        let content = try String(contentsOf: credentialsPath, encoding: .utf8)
+        var lines = content.components(separatedBy: .newlines)
+        
+        // Find the profile section
+        guard let profileIndex = lines.firstIndex(of: "[\(session.alias)]") else {
+            throw NSError(domain: "AWSService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Profile not found in credentials file"])
+        }
+        
+        // Extract credentials from profile
+        var accessKey = ""
+        var secretKey = ""
+        var sessionToken = ""
+        
+        var i = profileIndex + 1
+        while i < lines.count && !lines[i].hasPrefix("[") {
+            let line = lines[i].trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("aws_access_key_id") {
+                accessKey = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
+            } else if line.hasPrefix("aws_secret_access_key") {
+                secretKey = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
+            } else if line.hasPrefix("aws_session_token") {
+                sessionToken = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
+            }
+            i += 1
+        }
+        
+        // Remove existing [default] section
+        if let defaultIndex = lines.firstIndex(of: "[default]") {
+            var endIndex = defaultIndex + 1
+            while endIndex < lines.count && !lines[endIndex].hasPrefix("[") {
+                endIndex += 1
+            }
+            lines.removeSubrange(defaultIndex..<endIndex)
+        }
+        
+        // Add new [default] section
+        lines.append("[default]")
+        lines.append("aws_access_key_id = \(accessKey)")
+        lines.append("aws_secret_access_key = \(secretKey)")
+        if !sessionToken.isEmpty {
+            lines.append("aws_session_token = \(sessionToken)")
+        }
+        lines.append("")
+        
+        let newContent = lines.joined(separator: "\n")
+        try newContent.write(to: credentialsPath, atomically: true, encoding: .utf8)
+        
+        print("✅ Set \(session.alias) as default profile")
+    }
+    
+    func isDefaultProfile(_ profileName: String) -> Bool {
+        guard FileManager.default.fileExists(atPath: credentialsURL.path) else { return false }
+        
+        do {
+            let content = try String(contentsOf: credentialsURL, encoding: .utf8)
+            let lines = content.components(separatedBy: .newlines)
+            
+            // Find [default] section
+            guard let defaultIndex = lines.firstIndex(of: "[default]") else { return false }
+            
+            // Find [profile] section
+            guard let profileIndex = lines.firstIndex(of: "[\(profileName)]") else { return false }
+            
+            // Extract access keys from both sections
+            var defaultKey = ""
+            var profileKey = ""
+            
+            var i = defaultIndex + 1
+            while i < lines.count && !lines[i].hasPrefix("[") {
+                let line = lines[i].trimmingCharacters(in: .whitespaces)
+                if line.hasPrefix("aws_access_key_id") {
+                    defaultKey = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                    break
+                }
+                i += 1
+            }
+            
+            i = profileIndex + 1
+            while i < lines.count && !lines[i].hasPrefix("[") {
+                let line = lines[i].trimmingCharacters(in: .whitespaces)
+                if line.hasPrefix("aws_access_key_id") {
+                    profileKey = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                    break
+                }
+                i += 1
+            }
+            
+            return !defaultKey.isEmpty && defaultKey == profileKey
+        } catch {
+            return false
+        }
+    }
+    
     private var awsPath: String {
         if let customPath = UserDefaults.standard.string(forKey: "awsCliPath"), !customPath.isEmpty {
             return customPath

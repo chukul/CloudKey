@@ -323,6 +323,18 @@ struct SidebarView: View {
         
         if session.status == .active {
             Button(action: {
+                do {
+                    try AWSService.shared.setAsDefaultProfile(session)
+                    // Show success feedback
+                    NSSound.beep()
+                } catch {
+                    print("Failed to set as default: \(error.localizedDescription)")
+                }
+            }) {
+                Label("Set as Default Profile", systemImage: "star.circle.fill")
+            }
+            
+            Button(action: {
                 Task {
                     let updated = await AWSService.shared.openAWSConsole(for: session)
                     store.updateSession(updated)
@@ -425,6 +437,13 @@ struct SessionRow: View {
             Image(systemName: typeIcon)
                 .foregroundColor(.secondary)
                 .frame(width: 16)
+            
+            // Default profile indicator
+            if session.status == .active && AWSService.shared.isDefaultProfile(session.alias) {
+                Image(systemName: "star.fill")
+                    .foregroundColor(.yellow)
+                    .font(.caption)
+            }
             
             // Session info
             VStack(alignment: .leading, spacing: 2) {
