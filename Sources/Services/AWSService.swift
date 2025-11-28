@@ -504,15 +504,16 @@ class AWSService {
             exit 1
         fi
         
-        # Create JSON for federation
-        SESSION_JSON=$(cat <<EOF
-        {"sessionId":"$ACCESS_KEY","sessionKey":"$SECRET_KEY","sessionToken":"$SESSION_TOKEN"}
-        EOF
-        )
-        
         echo "🔗 Requesting signin token..."
         
-        # URL encode and get signin token
+        # Create JSON using jq to properly escape values
+        SESSION_JSON=$(jq -n \
+            --arg id "$ACCESS_KEY" \
+            --arg key "$SECRET_KEY" \
+            --arg token "$SESSION_TOKEN" \
+            '{sessionId: $id, sessionKey: $key, sessionToken: $token}')
+        
+        # URL encode the JSON
         ENCODED_SESSION=$(echo -n "$SESSION_JSON" | jq -sRr @uri)
         SIGNIN_URL="https://signin.aws.amazon.com/federation?Action=getSigninToken&SessionDuration=43200&Session=$ENCODED_SESSION"
         
