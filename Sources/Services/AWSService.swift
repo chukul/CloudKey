@@ -4,6 +4,9 @@ import AppKit
 class AWSService {
     static let shared = AWSService()
     
+    // Cache for MFA session tokens
+    private var sessionTokenCache: [String: (credentials: Credentials, expiration: Date)] = [:]
+    
     private var awsPath: String {
         if let customPath = UserDefaults.standard.string(forKey: "awsCliPath"), !customPath.isEmpty {
             return customPath
@@ -46,27 +49,67 @@ class AWSService {
                 throw NSError(domain: "AWSService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Role ARN is missing"])
             }
             
-            // Use profile alias as session name (AWS will prepend role name automatically)
+            // Use profile alias as session name
             let sessionName = session.alias
             let sourceProfile = session.sourceProfile ?? session.profileName
             
+            // Check if we need to get a session token first (for MFA)
+            var effectiveProfile = sourceProfile
+            if let mfaSerial = session.mfaSerial, let token = mfaToken {
+                // Check cache first
+                let cacheKey = "\(sourceProfile)-\(mfaSerial)"
+                let now = Date()
+                
+                if let cached = sessionTokenCache[cacheKey], cached.expiration > now.addingTimeInterval(300) {
+                    // Use cached session token (valid for at least 5 more minutes)
+                    updatedSession.logs.append("[\(timestamp)] 🔄 Using cached MFA session token")
+                    effectiveProfile = "\(sourceProfile)-mfa-session"
+                } else {
+                    // Get new session token with MFA
+                    updatedSession.logs.append("[\(timestamp)] 🔐 Getting MFA session token (valid for 12 hours)...")
+                    
+                    let sessionArgs = [
+                        "sts", "get-session-token",
+                        "--serial-number", mfaSerial,
+                        "--token-code", token,
+                        "--duration-seconds", "43200", // 12 hours
+                        "--profile", sourceProfile,
+                        "--output", "json"
+                    ]
+                    
+                    do {
+                        let sessionData = try await runAWSCommand(sessionArgs)
+                        let decoder = JSONDecoder()
+                        decoder.dateDecodingStrategy = .iso8601
+                        let sessionResponse = try decoder.decode(STSResponse.self, from: sessionData)
+                        
+                        // Cache the session token
+                        sessionTokenCache[cacheKey] = (sessionResponse.Credentials, sessionResponse.Credentials.Expiration)
+                        
+                        // Write session token to a temporary profile
+                        effectiveProfile = "\(sourceProfile)-mfa-session"
+                        try updateCredentialsFile(profile: effectiveProfile, credentials: sessionResponse.Credentials, setAsDefault: false)
+                        
+                        updatedSession.logs.append("[\(timestamp)] ✅ MFA session token obtained (expires: \(sessionResponse.Credentials.Expiration.formatted()))")
+                        updatedSession.logs.append("[\(timestamp)] 💡 You won't need MFA again for 12 hours!")
+                    } catch {
+                        updatedSession.logs.append("[\(timestamp)] ❌ Failed to get session token: \(error.localizedDescription)")
+                        throw error
+                    }
+                }
+            }
+            
+            // Now assume the role using the effective profile (either original or MFA session)
             var args = [
                 "sts", "assume-role",
                 "--role-arn", roleArn,
                 "--role-session-name", sessionName,
-                "--profile", sourceProfile,
+                "--profile", effectiveProfile,
                 "--output", "json"
             ]
             
-            if let mfaSerial = session.mfaSerial, let token = mfaToken {
-                args.append("--serial-number")
-                args.append(mfaSerial)
-                args.append("--token-code")
-                args.append(token)
-            }
-            
             let command = "aws " + args.joined(separator: " ")
-            updatedSession.logs.append("[\(timestamp)] 🔄 Executing: \(command)")
+            updatedSession.logs.append("[\(timestamp)] 🔄 Assuming role...")
             
             do {
                 let data = try await runAWSCommand(args)
