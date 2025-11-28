@@ -58,9 +58,15 @@ struct SettingsView: View {
             Form {
                 GroupBox {
                     VStack(spacing: 20) {
-                        Image(systemName: "key.fill")
-                            .font(.system(size: 48))
-                            .foregroundColor(.accentColor)
+                        if let appIcon = NSImage(named: "AppIcon") {
+                            Image(nsImage: appIcon)
+                                .resizable()
+                                .frame(width: 80, height: 80)
+                        } else {
+                            Image(systemName: "key.fill")
+                                .font(.system(size: 48))
+                                .foregroundColor(.accentColor)
+                        }
                         
                         Text("CloudKey")
                             .font(.title)
