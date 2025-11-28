@@ -25,7 +25,7 @@ struct ProfileEditorView: View {
         _alias = State(initialValue: session.alias)
         _profileName = State(initialValue: session.profileName)
         _type = State(initialValue: session.type)
-        _region = State(initialValue: session.region)
+        _region = State(initialValue: session.region.isEmpty ? "ap-southeast-1" : session.region)
         _accountId = State(initialValue: session.accountId)
         _roleArn = State(initialValue: session.roleArn ?? "")
         _mfaSerial = State(initialValue: session.mfaSerial ?? "")
@@ -79,12 +79,14 @@ struct ProfileEditorView: View {
                                 icon: "tag.fill"
                             )
                             
-                            ModernTextField(
-                                label: "Profile Name",
-                                placeholder: "default",
-                                text: $profileName,
-                                icon: "person.fill"
-                            )
+                            if type != .assumedRole {
+                                ModernTextField(
+                                    label: "Profile Name",
+                                    placeholder: "default",
+                                    text: $profileName,
+                                    icon: "person.fill"
+                                )
+                            }
                             
                             ModernTextField(
                                 label: "Group (Optional)",
@@ -115,12 +117,18 @@ struct ProfileEditorView: View {
                     // AWS Configuration
                     GroupBox {
                         VStack(spacing: 16) {
-                            ModernTextField(
-                                label: "Region",
-                                placeholder: "us-east-1",
-                                text: $region,
-                                icon: "globe"
-                            )
+                            VStack(alignment: .leading, spacing: 8) {
+                                Label("Region", systemImage: "globe")
+                                    .font(.subheadline)
+                                    .foregroundColor(.secondary)
+                                
+                                Picker("", selection: $region) {
+                                    ForEach(AWSRegions.all, id: \.self) { region in
+                                        Text(region).tag(region)
+                                    }
+                                }
+                                .pickerStyle(.menu)
+                            }
                             
                             ModernTextField(
                                 label: "Account ID",
@@ -211,7 +219,8 @@ struct ProfileEditorView: View {
                 Button(action: {
                     var updatedSession = initialSession
                     updatedSession.alias = alias
-                    updatedSession.profileName = profileName
+                    // For assumed roles, use alias as profile name
+                    updatedSession.profileName = type == .assumedRole ? alias : profileName
                     updatedSession.type = type
                     updatedSession.region = region
                     updatedSession.accountId = accountId
@@ -322,4 +331,32 @@ struct ModernSecureField: View {
         }
         .animation(.easeInOut(duration: 0.2), value: isFocused)
     }
+}
+
+struct AWSRegions {
+    static let all = [
+        "ap-southeast-1",  // Singapore
+        "ap-southeast-7",  // Thailand
+        "us-east-1",       // N. Virginia
+        "us-east-2",       // Ohio
+        "us-west-1",       // N. California
+        "us-west-2",       // Oregon
+        "ap-south-1",      // Mumbai
+        "ap-northeast-1",  // Tokyo
+        "ap-northeast-2",  // Seoul
+        "ap-northeast-3",  // Osaka
+        "ap-southeast-2",  // Sydney
+        "ap-southeast-3",  // Jakarta
+        "ap-southeast-4",  // Melbourne
+        "ca-central-1",    // Canada
+        "eu-central-1",    // Frankfurt
+        "eu-west-1",       // Ireland
+        "eu-west-2",       // London
+        "eu-west-3",       // Paris
+        "eu-north-1",      // Stockholm
+        "eu-south-1",      // Milan
+        "me-south-1",      // Bahrain
+        "sa-east-1",       // São Paulo
+        "af-south-1"       // Cape Town
+    ]
 }

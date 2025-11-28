@@ -1,8 +1,38 @@
 #!/bin/bash
 
-# Build the executable
+# Build the executable for both architectures
 echo "Building executable..."
-swift build -c release
+
+# Check if we can build universal binary
+if [[ $(uname -m) == "arm64" ]]; then
+    echo "Building universal binary (arm64 + x86_64)..."
+    
+    # Build for arm64
+    echo "Building for arm64..."
+    swift build -c release
+    mkdir -p .build/arm64
+    cp .build/release/CloudKey .build/arm64/CloudKey
+    
+    # Build for x86_64 using Rosetta
+    echo "Building for x86_64..."
+    arch -x86_64 swift build -c release
+    mkdir -p .build/x86_64
+    cp .build/release/CloudKey .build/x86_64/CloudKey
+    
+    # Create universal binary
+    mkdir -p .build/universal
+    if lipo -create .build/arm64/CloudKey .build/x86_64/CloudKey -output .build/universal/CloudKey 2>/dev/null; then
+        BINARY_PATH=".build/universal/CloudKey"
+        echo "✅ Universal binary created"
+    else
+        echo "⚠️  Could not create universal binary, using arm64 only"
+        BINARY_PATH=".build/arm64/CloudKey"
+    fi
+else
+    echo "Building for current architecture..."
+    swift build -c release
+    BINARY_PATH=".build/release/CloudKey"
+fi
 
 # Create app bundle structure
 APP_NAME="CloudKey"
@@ -18,7 +48,7 @@ mkdir -p "$RESOURCES"
 
 # Copy executable
 echo "Copying executable..."
-cp .build/release/$APP_NAME "$MACOS/"
+cp "$BINARY_PATH" "$MACOS/"
 
 # Create app icon from Assets.xcassets
 echo "Creating app icon..."

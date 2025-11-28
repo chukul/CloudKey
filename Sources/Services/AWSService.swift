@@ -5,7 +5,24 @@ class AWSService {
     static let shared = AWSService()
     
     private var awsPath: String {
-        UserDefaults.standard.string(forKey: "awsCliPath") ?? "/usr/local/bin/aws"
+        if let customPath = UserDefaults.standard.string(forKey: "awsCliPath") {
+            return customPath
+        }
+        
+        // Auto-detect AWS CLI location
+        let possiblePaths = [
+            "/opt/homebrew/bin/aws",  // Apple Silicon
+            "/usr/local/bin/aws",      // Intel Mac
+            "/usr/bin/aws"             // System default
+        ]
+        
+        for path in possiblePaths {
+            if FileManager.default.fileExists(atPath: path) {
+                return path
+            }
+        }
+        
+        return "/usr/local/bin/aws" // Fallback
     }
     
     var credentialsURL: URL = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".aws/credentials")

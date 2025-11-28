@@ -9,6 +9,9 @@ struct SidebarView: View {
     @State private var showMFAAlert = false
     @State private var mfaToken = ""
     @State private var sessionToStart: Session?
+    @State private var showExportSuccess = false
+    @State private var showImportError = false
+    @State private var importErrorMessage = ""
     
     var filteredSessions: [Session] {
         store.sessions.filter { session in
@@ -168,12 +171,30 @@ struct SidebarView: View {
         }
         .navigationTitle("CloudKey")
         .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Menu {
+                    Button(action: exportProfiles) {
+                        Label("Export Profiles", systemImage: "square.and.arrow.up")
+                    }
+                    
+                    Button(action: importProfiles) {
+                        Label("Import Profiles (Merge)", systemImage: "square.and.arrow.down")
+                    }
+                    
+                    Button(action: importProfilesReplace) {
+                        Label("Import Profiles (Replace)", systemImage: "arrow.triangle.2.circlepath")
+                    }
+                } label: {
+                    Label("More", systemImage: "ellipsis.circle")
+                }
+            }
+            
             ToolbarItem(placement: .primaryAction) {
                 Button(action: {
                     editingSession = Session(
                         alias: "",
                         profileName: "",
-                        region: "us-east-1",
+                        region: "ap-southeast-1",
                         accountId: "",
                         status: .inactive,
                         type: .assumedRole
@@ -213,6 +234,65 @@ struct SidebarView: View {
                 mfaToken = ""
                 sessionToStart = nil
             })
+        }
+        .alert("Export Successful", isPresented: $showExportSuccess) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Profiles exported successfully")
+        }
+        .alert("Import Error", isPresented: $showImportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importErrorMessage)
+        }
+    }
+    
+    private func exportProfiles() {
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.json]
+        panel.nameFieldStringValue = "cloudkey-profiles.json"
+        panel.message = "Export CloudKey profiles"
+        
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                if let data = store.exportProfiles() {
+                    do {
+                        try data.write(to: url)
+                        showExportSuccess = true
+                    } catch {
+                        importErrorMessage = "Failed to save file: \(error.localizedDescription)"
+                        showImportError = true
+                    }
+                }
+            }
+        }
+    }
+    
+    private func importProfiles() {
+        importProfilesWithMode(replace: false)
+    }
+    
+    private func importProfilesReplace() {
+        importProfilesWithMode(replace: true)
+    }
+    
+    private func importProfilesWithMode(replace: Bool) {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.message = replace ? "Import and replace all profiles" : "Import and merge profiles"
+        
+        panel.begin { response in
+            if response == .OK, let url = panel.url {
+                do {
+                    let data = try Data(contentsOf: url)
+                    try store.importProfiles(from: data, replace: replace)
+                    showExportSuccess = true
+                } catch {
+                    importErrorMessage = "Failed to import: \(error.localizedDescription)"
+                    showImportError = true
+                }
+            }
         }
     }
     

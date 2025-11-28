@@ -159,4 +159,33 @@ class SessionStore: ObservableObject {
             sessions.first { $0.id == id }
         }
     }
+    
+    // MARK: - Export/Import
+    
+    func exportProfiles() -> Data? {
+        let exports = sessions.map { $0.toExport() }
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try? encoder.encode(exports)
+    }
+    
+    func importProfiles(from data: Data, replace: Bool = false) throws {
+        let decoder = JSONDecoder()
+        let importedExports = try decoder.decode([ProfileExport].self, from: data)
+        let importedSessions = importedExports.map { Session.fromExport($0) }
+        
+        if replace {
+            sessions = importedSessions
+        } else {
+            // Merge: add new profiles, skip duplicates by alias
+            for imported in importedSessions {
+                if !sessions.contains(where: { $0.alias == imported.alias }) {
+                    var newSession = imported
+                    newSession.id = UUID()
+                    sessions.append(newSession)
+                }
+            }
+        }
+        save()
+    }
 }

@@ -17,6 +17,7 @@ Built with **SwiftUI** targeting macOS 13.0+.
 - **Session Groups**: Organize profiles into folders (Dev/Prod/Personal)
 - **MFA Support**: Integrated MFA token input for secure authentication
 - **Session Cloning**: Duplicate profiles with one click
+- **Profile Import/Export**: Backup and share profile configurations as JSON
 
 ### 🎨 User Experience
 - **Modern 3-Pane Layout**: Clean sidebar, list, and detail views
@@ -24,6 +25,8 @@ Built with **SwiftUI** targeting macOS 13.0+.
 - **Status Indicators**: Visual badges for active, inactive, and expiring sessions
 - **Hover Actions**: Context-sensitive buttons appear on hover
 - **Visual Feedback**: Toast notifications for clipboard operations
+- **Region Selector**: Dropdown with all AWS regions (default: ap-southeast-1)
+- **Streamlined Forms**: Simplified profile editor for assumed roles
 - **Keyboard Shortcuts**:
   - `⌘N` - New profile
   - `⌘R` - Refresh sessions
@@ -37,10 +40,17 @@ Built with **SwiftUI** targeting macOS 13.0+.
 - **AWS Console Access**: One-click federated login to AWS Console
 - **Console Logging**: Real-time activity logs with detailed output
 - **Export Options**: Shell, JSON, and AWS CLI format exports
+- **Auto-detect AWS CLI**: Works on both Intel and Apple Silicon Macs
+
+### 🔄 Import/Export
+- **Export Profiles**: Save all profile configurations to JSON
+- **Import (Merge)**: Add profiles from JSON without deleting existing ones
+- **Import (Replace)**: Replace all profiles with imported configuration
+- **Clean Format**: Only essential fields exported (no temporary data)
 
 ## 📋 Requirements
 
-- macOS 13.0 or later
+- macOS 13.0 or later (Universal Binary: Intel & Apple Silicon)
 - AWS CLI installed and configured
 - `jq` for JSON processing (for console access)
 - `curl` (pre-installed on macOS)
@@ -114,6 +124,29 @@ swift run
    - **JSON**: Export as JSON object
    - **AWS CLI**: Export as AWS CLI config
 
+### Import/Export Profiles
+
+**Export Profiles:**
+1. Click the menu button (⋮) in the toolbar
+2. Select **Export Profiles**
+3. Choose location and save as JSON
+
+**Import Profiles:**
+1. Click the menu button (⋮) in the toolbar
+2. Choose import mode:
+   - **Import (Merge)**: Add profiles without deleting existing ones
+   - **Import (Replace)**: Replace all profiles with imported configuration
+3. Select JSON file to import
+
+**Export Format:**
+The exported JSON contains only essential configuration:
+- Profile alias, type, region, account ID
+- Role ARN and source profile (for assumed roles)
+- MFA serial (if configured)
+- Group assignment
+
+Temporary data (credentials, session status, logs) is excluded for security.
+
 ## 🏗️ Project Structure
 
 ```
@@ -143,7 +176,12 @@ CloudKey/
 
 ### AWS CLI Path
 
-By default, CloudKey looks for AWS CLI at `/usr/local/bin/aws`. You can configure a custom path in Settings.
+CloudKey automatically detects AWS CLI location:
+- `/opt/homebrew/bin/aws` (Apple Silicon)
+- `/usr/local/bin/aws` (Intel Mac)
+- `/usr/bin/aws` (System default)
+
+You can also configure a custom path in Settings if needed.
 
 ### Data Storage
 
