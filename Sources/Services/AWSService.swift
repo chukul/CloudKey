@@ -284,22 +284,37 @@ class AWSService {
             
             // Check if we need to use MFA session token
             var effectiveProfile = sourceProfile
+            var usedDirectMFA = false
+            
             if let mfaSerial = session.mfaSerial {
                 debugLog("MFA Serial: \(mfaSerial)")
                 
-                let cacheKey = "\(sourceProfile)-\(mfaSerial)"
-                let now = Date()
-                
-                // Check cache first
-                if let cached = sessionTokenCache[cacheKey], cached.expiration > now.addingTimeInterval(300) {
-                    // Use cached session token (valid for at least 5 more minutes)
-                    debugLog("Using cached MFA session token")
-                    updatedSession.logs.append("[\(timestamp)] 🔄 Using cached MFA session token")
-                    effectiveProfile = "\(sourceProfile)-mfa-session"
-                } else if let token = mfaToken {
-                    debugLog("Getting new MFA session token")
-                    // Get new session token with MFA
-                    updatedSession.logs.append("[\(timestamp)] 🔐 Getting MFA session token (valid for 12 hours)...")
+                // If skipMFACache is true, skip caching and use direct MFA
+                if session.skipMFACache {
+                    guard let token = mfaToken else {
+                        let error = "[\(timestamp)] ❌ Error: MFA token required"
+                        updatedSession.logs.append(error)
+                        throw NSError(domain: "AWSService", code: 1, userInfo: [NSLocalizedDescriptionKey: "MFA token required"])
+                    }
+                    debugLog("Skipping MFA cache - using direct MFA")
+                    updatedSession.logs.append("[\(timestamp)] 🔐 Using direct MFA (no cache, federation-compatible)")
+                    usedDirectMFA = true
+                    // effectiveProfile stays as sourceProfile, MFA will be added to assume-role
+                } else {
+                    // Normal flow with MFA caching
+                    let cacheKey = "\(sourceProfile)-\(mfaSerial)"
+                    let now = Date()
+                    
+                    // Check cache first
+                    if let cached = sessionTokenCache[cacheKey], cached.expiration > now.addingTimeInterval(300) {
+                        // Use cached session token (valid for at least 5 more minutes)
+                        debugLog("Using cached MFA session token")
+                        updatedSession.logs.append("[\(timestamp)] 🔄 Using cached MFA session token")
+                        effectiveProfile = "\(sourceProfile)-mfa-session"
+                    } else if let token = mfaToken {
+                        debugLog("Getting new MFA session token")
+                        // Get new session token with MFA
+                        updatedSession.logs.append("[\(timestamp)] 🔐 Getting MFA session token (valid for 12 hours)...")
                     
                     let sessionArgs = [
                         "sts", "get-session-token",
@@ -347,6 +362,14 @@ class AWSService {
                 "--output", "json"
             ]
             
+            // If using direct MFA (skipMFACache), add MFA to assume-role command
+            if usedDirectMFA, let mfaSerial = session.mfaSerial, let token = mfaToken {
+                args.append("--serial-number")
+                args.append(mfaSerial)
+                args.append("--token-code")
+                args.append(token)
+            }
+            
             let command = "aws " + args.joined(separator: " ")
             updatedSession.logs.append("[\(timestamp)] 🔄 Assuming role...")
             
@@ -370,6 +393,7 @@ class AWSService {
                 let errorMsg = "[\(timestamp)] ❌ Error: \(error.localizedDescription)"
                 updatedSession.logs.append(errorMsg)
                 throw error
+            }
             }
             
         case .sso:
@@ -480,6 +504,9 @@ class AWSService {
         }
         
         // Append profile section
+        if !lines.isEmpty && !lines.last!.isEmpty {
+            lines.append("") // Ensure blank line before new section
+        }
         lines.append("[\(profile)]")
         lines.append("aws_access_key_id = \(credentials.AccessKeyId)")
         lines.append("aws_secret_access_key = \(credentials.SecretAccessKey)")
@@ -544,28 +571,59 @@ class AWSService {
         var updatedSession = session
         let timestamp = Date().formatted(date: .omitted, time: .standard)
         
-        debugLog("Opening AWS Console for session: \(session.alias)")
         updatedSession.logs.append("[\(timestamp)] 🌐 Opening AWS Console...")
         
         guard session.status == .active else {
-            debugLog("Session not active, cannot open console")
             updatedSession.logs.append("[\(timestamp)] ❌ Session must be active to open console")
             return updatedSession
         }
         
-        debugLog("Session is active, profile: \(session.alias), region: \(session.region)")
+        // Attempt federation only if skipMFACache is enabled (direct MFA credentials)
+        if session.skipMFACache {
+            updatedSession.logs.append("[\(timestamp)] 🔐 Attempting federated sign-in...")
+            return await attemptFederatedConsole(for: updatedSession)
+        } else {
+            updatedSession.logs.append("[\(timestamp)] ℹ️  Opening console directly (using MFA cache)")
+            return await openDirectConsole(for: updatedSession)
+        }
+    }
+    
+    private func attemptFederatedConsole(for session: Session) async -> Session {
+        var updatedSession = session
+        let timestamp = Date().formatted(date: .omitted, time: .standard)
         
-        // Simple approach: Open console with AWS_PROFILE environment variable
         let script = """
         #!/bin/bash
         export AWS_PROFILE="\(session.alias)"
+        export PATH="/usr/local/bin:/opt/homebrew/bin:$PATH"
         
-        # Open the AWS Console directly
-        # The browser will use the credentials from the profile
-        open "https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)"
+        # Get credentials
+        ACCESS_KEY=$(\(awsPath) configure get aws_access_key_id)
+        SECRET_KEY=$(\(awsPath) configure get aws_secret_access_key)
+        SESSION_TOKEN=$(\(awsPath) configure get aws_session_token)
+        
+        if [ -z "$ACCESS_KEY" ] || [ -z "$SECRET_KEY" ]; then
+            echo "ERROR"
+            exit 1
+        fi
+        
+        # Create JSON and encode
+        SESSION_JSON="{\\"sessionId\\":\\"$ACCESS_KEY\\",\\"sessionKey\\":\\"$SECRET_KEY\\",\\"sessionToken\\":\\"$SESSION_TOKEN\\"}"
+        ENCODED_SESSION=$(python3 -c "import urllib.parse; print(urllib.parse.quote('''$SESSION_JSON''', safe=''))")
+        
+        # Get signin token
+        RESPONSE=$(curl -s "https://signin.aws.amazon.com/federation?Action=getSigninToken&SessionDuration=43200&Session=$ENCODED_SESSION")
+        TOKEN=$(echo "$RESPONSE" | python3 -c "import sys, json; print(json.load(sys.stdin).get('SigninToken', ''))" 2>/dev/null)
+        
+        if [ -n "$TOKEN" ] && [ ${#TOKEN} -gt 10 ]; then
+            CONSOLE_URL="https://signin.aws.amazon.com/federation?Action=login&Issuer=CloudKey&Destination=https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)&SigninToken=$TOKEN"
+            open "$CONSOLE_URL"
+            echo "SUCCESS"
+        else
+            echo "FAILED"
+            exit 1
+        fi
         """
-        
-        debugLog("Opening console directly for region: \(session.region)")
         
         let tempDir = FileManager.default.temporaryDirectory
         let scriptPath = tempDir.appendingPathComponent("open-console-\(UUID().uuidString).sh")
@@ -578,20 +636,43 @@ class AWSService {
             process.executableURL = URL(fileURLWithPath: "/bin/bash")
             process.arguments = [scriptPath.path]
             
+            let pipe = Pipe()
+            process.standardOutput = pipe
+            process.standardError = pipe
+            
             try process.run()
             process.waitUntilExit()
             
-            updatedSession.logs.append("[\(timestamp)] ✅ Opened AWS Console in region \(session.region)")
-            updatedSession.logs.append("[\(timestamp)] 💡 You may need to sign in with your AWS credentials")
-            
+            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
             try? FileManager.default.removeItem(at: scriptPath)
-            debugLog("Console opened successfully")
+            
+            if output.contains("SUCCESS") {
+                updatedSession.logs.append("[\(timestamp)] ✅ Opened console with automatic sign-in")
+            } else {
+                updatedSession.logs.append("[\(timestamp)] ⚠️  Federation failed, opening console directly")
+                return await openDirectConsole(for: updatedSession)
+            }
         } catch {
-            debugLog("Error opening console: \(error.localizedDescription)")
             updatedSession.logs.append("[\(timestamp)] ❌ Error: \(error.localizedDescription)")
+            return await openDirectConsole(for: updatedSession)
         }
         
-        debugLog("openAWSConsole completed")
+        return updatedSession
+    }
+    
+    private func openDirectConsole(for session: Session) async -> Session {
+        var updatedSession = session
+        let timestamp = Date().formatted(date: .omitted, time: .standard)
+        
+        let consoleURL = "https://\(session.region).console.aws.amazon.com/console/home?region=\(session.region)"
+        
+        if let url = URL(string: consoleURL) {
+            await MainActor.run {
+                NSWorkspace.shared.open(url)
+            }
+            updatedSession.logs.append("[\(timestamp)] ✅ Opened console - sign in manually if needed")
+        }
+        
         return updatedSession
     }
 }

@@ -9,29 +9,36 @@ if [[ $(uname -m) == "arm64" ]]; then
     
     # Build for arm64
     echo "Building for arm64..."
-    swift build -c release
-    mkdir -p .build/arm64
-    cp .build/release/CloudKey .build/arm64/CloudKey
+    swift build -c release --arch arm64
+    ARM64_PATH=$(swift build -c release --arch arm64 --show-bin-path)/CloudKey
     
     # Build for x86_64 using Rosetta
     echo "Building for x86_64..."
-    arch -x86_64 swift build -c release
-    mkdir -p .build/x86_64
-    cp .build/release/CloudKey .build/x86_64/CloudKey
+    arch -x86_64 swift build -c release --arch x86_64
+    X86_PATH=$(arch -x86_64 swift build -c release --arch x86_64 --show-bin-path)/CloudKey
     
     # Create universal binary
     mkdir -p .build/universal
-    if lipo -create .build/arm64/CloudKey .build/x86_64/CloudKey -output .build/universal/CloudKey 2>/dev/null; then
-        BINARY_PATH=".build/universal/CloudKey"
-        echo "✅ Universal binary created"
+    if [ -f "$ARM64_PATH" ] && [ -f "$X86_PATH" ]; then
+        if lipo -create "$ARM64_PATH" "$X86_PATH" -output .build/universal/CloudKey 2>/dev/null; then
+            BINARY_PATH=".build/universal/CloudKey"
+            echo "✅ Universal binary created"
+            lipo -info "$BINARY_PATH"
+        else
+            echo "⚠️  Could not create universal binary, using arm64 only"
+            BINARY_PATH="$ARM64_PATH"
+        fi
+    elif [ -f "$ARM64_PATH" ]; then
+        echo "⚠️  x86_64 build failed, using arm64 only"
+        BINARY_PATH="$ARM64_PATH"
     else
-        echo "⚠️  Could not create universal binary, using arm64 only"
-        BINARY_PATH=".build/arm64/CloudKey"
+        echo "❌ Build failed"
+        exit 1
     fi
 else
     echo "Building for current architecture..."
     swift build -c release
-    BINARY_PATH=".build/release/CloudKey"
+    BINARY_PATH=$(swift build -c release --show-bin-path)/CloudKey
 fi
 
 # Create app bundle structure

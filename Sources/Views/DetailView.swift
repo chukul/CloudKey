@@ -34,22 +34,41 @@ struct DetailView: View {
                 .cornerRadius(12)
                 .transition(.scale.combined(with: .opacity))
                 
+                // Auto-renew indicator
+                if liveSession.autoRenew {
+                    HStack(spacing: 6) {
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                            .font(.caption)
+                        Text("Auto-Renew")
+                            .font(.caption)
+                            .fontWeight(.semibold)
+                    }
+                    .foregroundColor(.blue)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.blue.opacity(0.1))
+                    .cornerRadius(12)
+                }
+                
                 Spacer()
                 
                 // Quick actions
                 HStack(spacing: 12) {
                     if liveSession.status == .active {
-                        Button(action: {
-                            Task {
-                                let updated = await AWSService.shared.openAWSConsole(for: liveSession)
-                                await MainActor.run {
-                                    store.updateSession(updated)
+                        // Only show Open Console when skipMFACache is enabled (federation works)
+                        if liveSession.skipMFACache {
+                            Button(action: {
+                                Task {
+                                    let updated = await AWSService.shared.openAWSConsole(for: liveSession)
+                                    await MainActor.run {
+                                        store.updateSession(updated)
+                                    }
                                 }
+                            }) {
+                                Label("Open Console", systemImage: "globe")
                             }
-                        }) {
-                            Label("Open Console", systemImage: "globe")
+                            .controlSize(.large)
                         }
-                        .controlSize(.large)
                         
                         Menu {
                             Button(action: { copyToClipboard(session.alias) }) {
@@ -94,21 +113,26 @@ struct DetailView: View {
                             // Check if MFA is required and if we have cached token
                             if let mfaSerial = session.mfaSerial,
                                let sourceProfile = session.sourceProfile {
-                                let hasCached = AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial)
-                                print("🔍 UI (DetailView): Checking cache for \(session.alias), hasCached: \(hasCached)")
-                                
-                                if !hasCached {
-                                    // Show MFA prompt
+                                // If skipMFACache is enabled, always prompt for MFA
+                                if session.skipMFACache {
                                     showMFAAlert = true
                                 } else {
-                                    // Use cached token
-                                    print("🔍 UI (DetailView): Using cached token, calling toggleSession without MFA")
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                        isStarting = true
-                                    }
-                                    store.toggleSession(session)
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                                        isStarting = false
+                                    let hasCached = AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial)
+                                    print("🔍 UI (DetailView): Checking cache for \(session.alias), hasCached: \(hasCached)")
+                                    
+                                    if !hasCached {
+                                        // Show MFA prompt
+                                        showMFAAlert = true
+                                    } else {
+                                        // Use cached token
+                                        print("🔍 UI (DetailView): Using cached token, calling toggleSession without MFA")
+                                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                            isStarting = true
+                                        }
+                                        store.toggleSession(session)
+                                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                            isStarting = false
+                                        }
                                     }
                                 }
                             } else {

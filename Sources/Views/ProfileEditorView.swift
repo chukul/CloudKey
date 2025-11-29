@@ -16,6 +16,10 @@ struct ProfileEditorView: View {
     @State private var secretKey: String
     @State private var sourceProfile: String
     @State private var group: String
+    @State private var validationReport: ValidationReport?
+    @State private var isValidating = false
+    @State private var showMFAForValidation = false
+    @State private var validationMfaToken = ""
     
     init(session: Session, onSave: @escaping (Session) -> Void, onCancel: @escaping () -> Void) {
         self.initialSession = session
@@ -203,6 +207,22 @@ struct ProfileEditorView: View {
                 .padding()
             }
             
+            // Validation Results
+            if let report = validationReport {
+                VStack(alignment: .leading, spacing: 8) {
+                    ForEach(Array(report.results.enumerated()), id: \.offset) { _, result in
+                        HStack(spacing: 8) {
+                            Text(result.icon)
+                            Text(result.message)
+                                .font(.caption)
+                            Spacer()
+                        }
+                    }
+                }
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+            }
+            
             Divider()
             
             // Footer
@@ -213,6 +233,26 @@ struct ProfileEditorView: View {
                 }
                 .keyboardShortcut(.cancelAction)
                 .controlSize(.large)
+                
+                Button(action: {
+                    // Check if MFA is required for deep validation
+                    if type == .assumedRole && !mfaSerial.isEmpty && validationMfaToken.isEmpty {
+                        showMFAForValidation = true
+                    } else {
+                        performValidation()
+                    }
+                }) {
+                    if isValidating {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                            .frame(width: 16, height: 16)
+                        Text("Testing...")
+                    } else {
+                        Label("Test Connection", systemImage: "checkmark.circle")
+                    }
+                }
+                .controlSize(.large)
+                .disabled(isValidating || (type == .assumedRole && sourceProfile.isEmpty))
                 
                 Spacer()
                 
@@ -242,12 +282,40 @@ struct ProfileEditorView: View {
                 .keyboardShortcut(.defaultAction)
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
-                .disabled(alias.isEmpty || profileName.isEmpty)
+                .disabled(alias.isEmpty || profileName.isEmpty || validationReport == nil || !validationReport!.isValid)
             }
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
         }
-        .frame(width: 650, height: 600)
+        .frame(width: 650, height: validationReport != nil ? 700 : 600)
+        .sheet(isPresented: $showMFAForValidation) {
+            MFAInputView(mfaToken: $validationMfaToken, onSubmit: {
+                showMFAForValidation = false
+                performValidation()
+            }, onCancel: {
+                showMFAForValidation = false
+                validationMfaToken = ""
+            })
+        }
+    }
+    
+    private func performValidation() {
+        isValidating = true
+        validationReport = nil
+        Task {
+            let report = await ValidationService.shared.validateProfile(
+                sourceProfile: sourceProfile,
+                roleArn: roleArn,
+                mfaSerial: mfaSerial,
+                type: type,
+                mfaToken: validationMfaToken.isEmpty ? nil : validationMfaToken
+            )
+            await MainActor.run {
+                validationReport = report
+                isValidating = false
+                validationMfaToken = "" // Clear token after use
+            }
+        }
     }
     
     private func saveIAMCredentials(profile: String, accessKey: String, secretKey: String) {

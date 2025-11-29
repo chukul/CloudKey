@@ -1,14 +1,18 @@
 import Foundation
 import SwiftUI
+import UserNotifications
 
 @MainActor
 class SessionStore: ObservableObject {
     @Published var sessions: [Session] = []
     @Published var recentSessionIds: [UUID] = []
+    @Published var expiringSession: Session? // Session that's about to expire
+    @Published var showExpirationWarning = false
     
     private let savePath: URL
     private let recentPath: URL
     private var expirationTimer: Timer?
+    private var warnedSessionIds: Set<UUID> = [] // Track which sessions we've warned about
     
     init() {
         let paths = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)
@@ -37,36 +41,180 @@ class SessionStore: ObservableObject {
             print("Loaded \(sessions.count) mock sessions.")
         }
         
-        // Start expiration check timer
-        startExpirationTimer()
+        // Request notification permissions
+        requestNotificationPermissions()
+        
+        // Start expiration check timer on main queue
+        DispatchQueue.main.async { [weak self] in
+            self?.startExpirationTimer()
+        }
     }
     
-    private func startExpirationTimer() {
-        expirationTimer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            Task { @MainActor in
-                self?.checkExpiredSessions()
+    private func requestNotificationPermissions() {
+        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
+            if granted {
+                print("✅ Notification permissions granted")
             }
         }
     }
     
+    private func startExpirationTimer() {
+        print("🔍 Starting expiration timer...")
+        expirationTimer?.invalidate()
+        expirationTimer = Timer(timeInterval: 10, repeats: true) { [weak self] _ in
+            print("⏰ Timer fired at \(Date().formatted(date: .omitted, time: .standard))")
+            self?.checkExpiredSessions()
+        }
+        RunLoop.main.add(expirationTimer!, forMode: .common)
+        print("✅ Expiration timer started")
+    }
+    
     private func checkExpiredSessions() {
         var needsSave = false
+        let now = Date()
+        // TEMP: Set to 59 minutes for testing (change back to 600 for production)
+        let warningThreshold: TimeInterval = 3540 // 59 minutes (600 = 10 minutes)
+        let autoRenewThreshold: TimeInterval = 300 // 5 minutes
+        
+        print("🔍 Checking \(sessions.count) sessions for expiration...")
         
         for i in 0..<sessions.count {
-            if sessions[i].status == .active,
-               let expiration = sessions[i].expiration,
-               expiration < Date() {
+            guard sessions[i].status == .active, let expiration = sessions[i].expiration else {
+                continue
+            }
+            
+            let timeRemaining = expiration.timeIntervalSince(now)
+            print("🔍 \(sessions[i].alias): \(Int(timeRemaining/60))m remaining, warned: \(warnedSessionIds.contains(sessions[i].id)), autoRenew: \(sessions[i].autoRenew)")
+            
+            // Check if expired
+            if timeRemaining <= 0 {
                 print("⏰ Session expired: \(sessions[i].alias)")
                 sessions[i].status = .inactive
                 sessions[i].accessKeyId = nil
                 sessions[i].expiration = nil
                 sessions[i].logs.append("[\(Date().formatted(date: .omitted, time: .standard))] ⏰ Session expired")
+                warnedSessionIds.remove(sessions[i].id)
                 needsSave = true
+            }
+            // Check for auto-renewal (5 minutes before expiration)
+            else if sessions[i].autoRenew && timeRemaining <= autoRenewThreshold && !warnedSessionIds.contains(sessions[i].id) {
+                print("🔄 Auto-renewing session: \(sessions[i].alias)")
+                warnedSessionIds.insert(sessions[i].id) // Prevent multiple renewal attempts
+                attemptAutoRenewal(sessions[i])
+            }
+            // Check if expiring soon (within warning threshold) and not already warned
+            else if timeRemaining <= warningThreshold && !warnedSessionIds.contains(sessions[i].id) {
+                print("⚠️  Session expiring soon: \(sessions[i].alias) in \(Int(timeRemaining/60)) minutes")
+                warnedSessionIds.insert(sessions[i].id)
+                showExpirationWarning(for: sessions[i])
             }
         }
         
         if needsSave {
             save()
+        }
+    }
+    
+    private func attemptAutoRenewal(_ session: Session) {
+        // If session requires MFA and doesn't have cache, show notification
+        if session.skipMFACache {
+            Task {
+                await showAutoRenewMFANotification(for: session)
+            }
+        } else {
+            // Has MFA cache, renew silently
+            Task {
+                do {
+                    var stopped = try await AWSService.shared.stopSession(session)
+                    stopped.skipMFACache = session.skipMFACache
+                    stopped.autoRenew = session.autoRenew
+                    updateSession(stopped)
+                    
+                    let renewed = try await AWSService.shared.startSession(stopped, mfaToken: nil)
+                    updateSession(renewed)
+                    
+                    // Show success notification
+                    let content = UNMutableNotificationContent()
+                    content.title = "Session Auto-Renewed"
+                    content.body = "\(session.alias) has been automatically renewed"
+                    content.sound = .default
+                    let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+                    try? await UNUserNotificationCenter.current().add(request)
+                    
+                    print("✅ Auto-renewed session: \(session.alias)")
+                } catch {
+                    print("❌ Auto-renewal failed for \(session.alias): \(error)")
+                    await showAutoRenewFailureNotification(for: session, error: error)
+                }
+            }
+        }
+    }
+    
+    private func showAutoRenewMFANotification(for session: Session) async {
+        let content = UNMutableNotificationContent()
+        content.title = "Auto-Renew Needs MFA"
+        content.body = "\(session.alias) requires MFA token for auto-renewal. Click to provide."
+        content.sound = .default
+        content.userInfo = ["sessionId": session.id.uuidString, "action": "autoRenewMFA"]
+        
+        let request = UNNotificationRequest(identifier: session.id.uuidString, content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(request)
+        
+        // Also show in-app alert
+        await MainActor.run {
+            expiringSession = session
+            showExpirationWarning = true
+        }
+    }
+    
+    private func showAutoRenewFailureNotification(for session: Session, error: Error) async {
+        let content = UNMutableNotificationContent()
+        content.title = "Auto-Renew Failed"
+        content.body = "\(session.alias) could not be renewed: \(error.localizedDescription)"
+        content.sound = .default
+        
+        let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
+        try? await UNUserNotificationCenter.current().add(request)
+    }
+    
+    private func showExpirationWarning(for session: Session) {
+        // Show in-app alert
+        expiringSession = session
+        showExpirationWarning = true
+        
+        // Send system notification
+        let content = UNMutableNotificationContent()
+        content.title = "Session Expiring Soon"
+        content.body = "\(session.alias) will expire in \(Int((session.expiration?.timeIntervalSinceNow ?? 0) / 60)) minutes"
+        content.sound = .default
+        
+        let request = UNNotificationRequest(identifier: session.id.uuidString, content: content, trigger: nil)
+        Task {
+            try? await UNUserNotificationCenter.current().add(request)
+        }
+    }
+    
+    func renewSession(_ session: Session, mfaToken: String? = nil) {
+        // Reset warning flag
+        warnedSessionIds.remove(session.id)
+        showExpirationWarning = false
+        expiringSession = nil
+        
+        // Stop and restart the session
+        Task {
+            do {
+                // First stop the session
+                var stopped = try await AWSService.shared.stopSession(session)
+                // Preserve skipMFACache flag
+                stopped.skipMFACache = session.skipMFACache
+                updateSession(stopped)
+                
+                // Then start it again (with MFA if provided, or use cached MFA)
+                let renewed = try await AWSService.shared.startSession(stopped, mfaToken: mfaToken)
+                updateSession(renewed)
+            } catch {
+                print("Error renewing session: \(error)")
+            }
         }
     }
     

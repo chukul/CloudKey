@@ -318,7 +318,7 @@ struct SidebarView: View {
                 store.toggleSession(session)
             } else if let mfaSerial = session.mfaSerial,
                       let sourceProfile = session.sourceProfile,
-                      !AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial) {
+                      (session.skipMFACache || !AWSService.shared.hasCachedMFAToken(sourceProfile: sourceProfile, mfaSerial: mfaSerial)) {
                 sessionToStart = session
                 showMFAAlert = true
             } else {
@@ -342,13 +342,16 @@ struct SidebarView: View {
                 Label("Set as Default Profile", systemImage: "star.circle.fill")
             }
             
-            Button(action: {
-                Task {
-                    let updated = await AWSService.shared.openAWSConsole(for: session)
-                    store.updateSession(updated)
+            // Only show Open Console when skipMFACache is enabled (federation works)
+            if session.skipMFACache {
+                Button(action: {
+                    Task {
+                        let updated = await AWSService.shared.openAWSConsole(for: session)
+                        store.updateSession(updated)
+                    }
+                }) {
+                    Label("Open AWS Console", systemImage: "globe")
                 }
-            }) {
-                Label("Open AWS Console", systemImage: "globe")
             }
             
             if let keyId = session.accessKeyId {
@@ -359,6 +362,32 @@ struct SidebarView: View {
                     Label("Copy Access Key", systemImage: "doc.on.doc")
                 }
             }
+        }
+        
+        Divider()
+        
+        // Federation compatibility toggle (only for assume role with MFA)
+        if session.type == .assumedRole && session.mfaSerial != nil {
+            Button(action: {
+                var updated = session
+                updated.skipMFACache.toggle()
+                store.updateSession(updated)
+            }) {
+                Label(session.skipMFACache ? "✓ Skip MFA Cache (federation)" : "Use MFA Cache (faster)", 
+                      systemImage: session.skipMFACache ? "network" : "bolt.fill")
+            }
+            
+            Divider()
+        }
+        
+        // Auto-renew toggle
+        Button(action: {
+            var updated = session
+            updated.autoRenew.toggle()
+            store.updateSession(updated)
+        }) {
+            Label(session.autoRenew ? "✓ Auto-Renew Enabled" : "Enable Auto-Renew", 
+                  systemImage: session.autoRenew ? "arrow.clockwise.circle.fill" : "arrow.clockwise.circle")
         }
         
         Divider()
