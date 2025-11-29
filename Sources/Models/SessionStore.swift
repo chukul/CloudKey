@@ -72,8 +72,7 @@ class SessionStore: ObservableObject {
     private func checkExpiredSessions() {
         var needsSave = false
         let now = Date()
-        // TEMP: Set to 59 minutes for testing (change back to 600 for production)
-        let warningThreshold: TimeInterval = 3540 // 59 minutes (600 = 10 minutes)
+        let warningThreshold: TimeInterval = 600 // 10 minutes
         let autoRenewThreshold: TimeInterval = 300 // 5 minutes
         
         print("🔍 Checking \(sessions.count) sessions for expiration...")
