@@ -27,6 +27,7 @@ Built with **SwiftUI** targeting macOS 13.0+.
 - **Search & Filter**: Find profiles quickly with real-time search
 - **Status Indicators**: Visual badges for active, inactive, and expiring sessions
 - **Auto-Renew Badge**: Blue indicator shows which profiles have auto-renewal enabled
+- **Quick Copy Credentials**: One-click copy buttons for access key, secret key, and session token
 - **Hover Actions**: Context-sensitive buttons appear on hover
 - **Visual Feedback**: Toast notifications for clipboard operations
 - **Region Selector**: Dropdown with all AWS regions (default: ap-southeast-1)
@@ -157,6 +158,19 @@ For profiles that need AWS Console access:
 2. Click **Open Console** button
 3. Browser opens with federated login to AWS Console
 4. Check the **Console** tab for detailed logs
+
+### Copying Individual Credentials
+
+1. Select an active session
+2. Go to the **Details** tab
+3. In the **Active Credentials** section, click copy buttons (📋) next to:
+   - **Access Key**: Copies the full access key ID
+   - **Secret Key**: Copies the secret access key (masked in UI)
+   - **Session Token**: Copies the session token (masked in UI)
+4. Toast notification confirms successful copy
+5. Paste credentials wherever needed (terminal, scripts, etc.)
+
+**Note**: Each profile's credentials are read from its own section in `~/.aws/credentials`, ensuring you copy the correct credentials for each profile.
 
 ### Exporting Credentials
 

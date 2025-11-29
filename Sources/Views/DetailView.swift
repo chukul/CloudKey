@@ -258,6 +258,48 @@ struct DetailView: View {
         }
     }
     
+    private func copyCredential(_ value: String, name: String) {
+        copyToClipboard(value)
+    }
+    
+    private func copySecretKey() {
+        if let secret = getCredentialFromFile(key: "aws_secret_access_key") {
+            copyToClipboard(secret)
+        }
+    }
+    
+    private func copySessionToken() {
+        if let token = getCredentialFromFile(key: "aws_session_token") {
+            copyToClipboard(token)
+        }
+    }
+    
+    private func getCredentialFromFile(key: String) -> String? {
+        let credPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".aws/credentials")
+        guard let content = try? String(contentsOf: credPath) else { return nil }
+        
+        let lines = content.components(separatedBy: .newlines)
+        var inTargetSection = false
+        let targetSection = "[\(session.profileName)]"
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            if trimmedLine == targetSection {
+                inTargetSection = true
+                continue
+            }
+            if line.starts(with: "[") {
+                inTargetSection = false
+            }
+            if inTargetSection && line.contains(key) {
+                return line.split(separator: "=", maxSplits: 1).last?
+                    .trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
+    }
+    
     private func copyToClipboard(_ text: String) {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
@@ -322,10 +364,12 @@ struct DetailView: View {
 
 struct DetailsTab: View {
     let session: Session
+    @State private var showCopiedNotification = false
     
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
+        ZStack {
+            ScrollView {
+                VStack(spacing: 16) {
                 // Profile Information
                 GroupBox {
                     VStack(spacing: 10) {
@@ -352,7 +396,54 @@ struct DetailsTab: View {
                     GroupBox {
                         VStack(spacing: 10) {
                             if let accessKey = session.accessKeyId {
-                                InfoRow(icon: "key.fill", label: "Access Key", value: accessKey)
+                                HStack {
+                                    Image(systemName: "key.fill")
+                                        .foregroundColor(.secondary)
+                                    Text("Access Key")
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text(accessKey)
+                                        .foregroundColor(.primary)
+                                        .textSelection(.enabled)
+                                    Button(action: { copyCredential(accessKey, name: "Access Key") }) {
+                                        Image(systemName: "doc.on.doc")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("Copy Access Key")
+                                }
+                            }
+                            
+                            // Only show secret/token copy for active sessions with credentials in [default]
+                            if session.status == .active && session.accessKeyId != nil {
+                                HStack {
+                                    Image(systemName: "lock.fill")
+                                        .foregroundColor(.secondary)
+                                    Text("Secret Key")
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("••••••••")
+                                        .foregroundColor(.primary)
+                                    Button(action: { copySecretKey() }) {
+                                        Image(systemName: "doc.on.doc")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("Copy Secret Key")
+                                }
+                                
+                                HStack {
+                                    Image(systemName: "ticket.fill")
+                                        .foregroundColor(.secondary)
+                                    Text("Session Token")
+                                        .foregroundColor(.secondary)
+                                    Spacer()
+                                    Text("••••••••")
+                                        .foregroundColor(.primary)
+                                    Button(action: { copySessionToken() }) {
+                                        Image(systemName: "doc.on.doc")
+                                    }
+                                    .buttonStyle(.borderless)
+                                    .help("Copy Session Token")
+                                }
                             }
                             
                             if let expiration = session.expiration {
@@ -366,7 +457,93 @@ struct DetailsTab: View {
                 }
             }
             .padding()
+            }
+            
+            // Copied notification
+            if showCopiedNotification {
+                VStack {
+                    Spacer()
+                    Text("✓ Copied to clipboard")
+                        .font(.caption)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(Color.accentColor)
+                        .foregroundColor(.white)
+                        .cornerRadius(8)
+                        .padding(.bottom, 16)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+            }
         }
+    }
+    
+    private func copyCredential(_ value: String, name: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(value, forType: .string)
+        withAnimation {
+            showCopiedNotification = true
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation {
+                showCopiedNotification = false
+            }
+        }
+    }
+    
+    private func copySecretKey() {
+        if let secret = getCredentialFromFile(key: "aws_secret_access_key") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(secret, forType: .string)
+            withAnimation {
+                showCopiedNotification = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                withAnimation {
+                    showCopiedNotification = false
+                }
+            }
+        }
+    }
+    
+    private func copySessionToken() {
+        if let token = getCredentialFromFile(key: "aws_session_token") {
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(token, forType: .string)
+            withAnimation {
+                showCopiedNotification = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                withAnimation {
+                    showCopiedNotification = false
+                }
+            }
+        }
+    }
+    
+    private func getCredentialFromFile(key: String) -> String? {
+        let credPath = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".aws/credentials")
+        guard let content = try? String(contentsOf: credPath) else { return nil }
+        
+        let lines = content.components(separatedBy: .newlines)
+        var inTargetSection = false
+        let targetSection = "[\(session.profileName)]"
+        
+        for line in lines {
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            if trimmedLine == targetSection {
+                inTargetSection = true
+                continue
+            }
+            if line.starts(with: "[") {
+                inTargetSection = false
+            }
+            if inTargetSection && line.contains(key) {
+                return line.split(separator: "=", maxSplits: 1).last?
+                    .trimmingCharacters(in: .whitespaces)
+            }
+        }
+        return nil
     }
 }
 
