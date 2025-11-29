@@ -4,6 +4,8 @@ import UserNotifications
 
 @MainActor
 class SessionStore: ObservableObject {
+    static var shared: SessionStore?
+    
     @Published var sessions: [Session] = []
     @Published var recentSessionIds: [UUID] = []
     @Published var expiringSession: Session? // Session that's about to expire
@@ -30,6 +32,9 @@ class SessionStore: ObservableObject {
         
         savePath = appSupport.appendingPathComponent("sessions.json")
         recentPath = appSupport.appendingPathComponent("recent.json")
+        
+        // Set shared instance after properties are initialized
+        SessionStore.shared = self
         
         load()
         loadRecent()

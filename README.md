@@ -23,6 +23,12 @@ Built with **SwiftUI** targeting macOS 13.0+.
 - **Profile Import/Export**: Backup and share profile configurations as JSON
 
 ### 🎨 User Experience
+- **Menu Bar Integration**: Native macOS menu bar app with quick access
+  - App icon shows active session count
+  - Dropdown menu with session list and actions
+  - Quick renew, stop, and copy access key
+  - Runs in background when main window closed
+  - Red warning icon when sessions expiring
 - **Modern 3-Pane Layout**: Clean sidebar, list, and detail views
 - **Search & Filter**: Find profiles quickly with real-time search
 - **Status Indicators**: Visual badges for active, inactive, and expiring sessions
@@ -36,6 +42,7 @@ Built with **SwiftUI** targeting macOS 13.0+.
   - `⌘N` - New profile
   - `⌘R` - Refresh sessions
   - `⌘↩` - Start/stop selected session
+  - `⌘O` - Open main window (from menu bar)
 
 ### ☁️ AWS Integration
 - **IAM User Sessions**: Direct credential management with access keys
@@ -194,6 +201,31 @@ For profiles that need AWS Console access:
    - **Import (Merge)**: Add profiles without deleting existing ones
    - **Import (Replace)**: Replace all profiles with imported configuration
 3. Select JSON file to import
+
+### Using Menu Bar Mode
+
+CloudKey runs as a native macOS menu bar app:
+
+**Menu Bar Icon:**
+- Shows your app icon with active session count (e.g., "🔑 2")
+- Changes to red warning icon ⚠️ when sessions are expiring (<10 minutes)
+- Updates automatically every minute
+
+**Quick Actions:**
+1. Click the menu bar icon to see dropdown menu
+2. View all active sessions with time remaining
+3. Hover over a session to see submenu:
+   - **Renew**: Renew the session (prompts for MFA if needed)
+   - **Stop**: Stop the session
+   - **Copy Access Key**: Copy to clipboard
+4. Click **Open CloudKey** to show main window
+5. Click **Quit** to exit the app
+
+**Background Mode:**
+- Close the main window (red button) - app continues running in menu bar
+- App disappears from Dock when window is closed
+- Click "Open CloudKey" from menu bar to bring window back
+- Perfect for keeping sessions active without cluttering your Dock
 
 ## 🏗️ Project Structure
 
