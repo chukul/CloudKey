@@ -54,10 +54,26 @@ class MenuBarManager {
     var cancellables = Set<AnyCancellable>()
     var updateTimer: Timer?
     var windowDelegate: WindowDelegate?
+    var lastActiveCount = 0
+    var lastExpiringCount = 0
+    var cachedAppIcon: NSImage?
+    var cachedWarningIcon: NSImage?
     
     func setup(store: SessionStore?) async {
-        print("🔧 MenuBarManager setup called")
         self.sessionStore = store
+        
+        // Pre-cache icons
+        if let appIcon = NSImage(named: "AppIcon") {
+            let resizedIcon = NSImage(size: NSSize(width: 18, height: 18))
+            resizedIcon.lockFocus()
+            appIcon.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
+            resizedIcon.unlockFocus()
+            cachedAppIcon = resizedIcon
+        }
+        
+        let warningImage = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Warning")
+        warningImage?.isTemplate = true
+        cachedWarningIcon = warningImage
         
         // Prevent app from quitting when window closes
         NSApplication.shared.setActivationPolicy(.accessory)
@@ -69,38 +85,31 @@ class MenuBarManager {
         }
         
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
-        print("🔧 Status item created: \(statusItem != nil)")
         
         if let button = statusItem?.button {
-            // Use app icon
-            if let appIcon = NSImage(named: "AppIcon") {
-                let resizedIcon = NSImage(size: NSSize(width: 18, height: 18))
-                resizedIcon.lockFocus()
-                appIcon.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
-                resizedIcon.unlockFocus()
-                button.image = resizedIcon
-            } else {
-                // Fallback to system icon
-                button.image = NSImage(systemSymbolName: "cloud.fill", accessibilityDescription: "CloudKey")
-            }
+            // Use cached icon
+            button.image = cachedAppIcon ?? NSImage(systemSymbolName: "cloud.fill", accessibilityDescription: "CloudKey")
             button.title = " 0"
-            print("🔧 Menu bar button configured")
         }
         
         updateMenuBar()
         startAutoUpdate()
         observeSessionChanges()
-        print("✅ Menu bar setup complete")
     }
     
     func startAutoUpdate() {
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+        // Update every 2 minutes instead of 1 minute
+        updateTimer = Timer.scheduledTimer(withTimeInterval: 120, repeats: true) { [weak self] _ in
             self?.updateMenuBar()
         }
+        updateTimer?.tolerance = 10 // Allow 10 second tolerance for power efficiency
     }
     
     func observeSessionChanges() {
         sessionStore?.$sessions
+            .map { $0.filter { $0.status == .active }.count }
+            .removeDuplicates()
+            .debounce(for: .seconds(0.5), scheduler: DispatchQueue.main)
             .sink { [weak self] _ in
                 self?.updateMenuBar()
             }
@@ -116,24 +125,22 @@ class MenuBarManager {
             return expiration.timeIntervalSinceNow <= 600
         }.count
         
+        // Skip update if nothing changed
+        if activeSessions.count == lastActiveCount && expiringCount == lastExpiringCount {
+            return
+        }
+        
+        lastActiveCount = activeSessions.count
+        lastExpiringCount = expiringCount
+        
         DispatchQueue.main.async { [weak self] in
             if let button = self?.statusItem?.button {
                 if expiringCount > 0 {
-                    // Warning icon in red
-                    let image = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Warning")
-                    image?.isTemplate = true
-                    button.image = image
+                    button.image = self?.cachedWarningIcon
                     button.contentTintColor = .red
                 } else {
-                    // Use app icon
-                    if let appIcon = NSImage(named: "AppIcon") {
-                        let resizedIcon = NSImage(size: NSSize(width: 18, height: 18))
-                        resizedIcon.lockFocus()
-                        appIcon.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
-                        resizedIcon.unlockFocus()
-                        button.image = resizedIcon
-                        button.contentTintColor = nil
-                    }
+                    button.image = self?.cachedAppIcon
+                    button.contentTintColor = nil
                 }
                 button.title = " \(activeSessions.count)"
             }
@@ -144,6 +151,7 @@ class MenuBarManager {
     
     func rebuildMenu(activeSessions: [Session]) {
         let menu = NSMenu()
+        menu.delegate = self // Set delegate for lazy loading
         
         let header = NSMenuItem(title: "Active Sessions (\(activeSessions.count))", action: nil, keyEquivalent: "")
         header.isEnabled = false
@@ -155,6 +163,9 @@ class MenuBarManager {
             noSessions.isEnabled = false
             menu.addItem(noSessions)
         } else {
+            // Store sessions for lazy loading
+            menu.representedObject = activeSessions
+            
             for session in activeSessions {
                 let item = createSessionMenuItem(session)
                 menu.addItem(item)
@@ -255,5 +266,11 @@ class WindowDelegate: NSObject, NSWindowDelegate {
         // Hide from Dock
         NSApplication.shared.setActivationPolicy(.accessory)
         return false
+    }
+}
+
+extension MenuBarManager: NSMenuDelegate {
+    func menuWillOpen(_ menu: NSMenu) {
+        // Menu is about to open - items are already created
     }
 }

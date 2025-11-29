@@ -77,6 +77,22 @@ Built with **SwiftUI** targeting macOS 13.0+.
   - Automatic MFA prompt for federation-compatible sessions
   - Preserves session configuration during renewal
 
+### ⚡ Performance & Efficiency
+- **Optimized Resource Usage**:
+  - CPU: ~10% idle, ~20-25% during updates
+  - Memory: ~97-127 MB (stable, no leaks)
+  - Low power impact with coalesced timers
+- **Smart Updates**:
+  - Timer tolerance for power efficiency (5-10s)
+  - Cached icons (no runtime image processing)
+  - Debounced Combine publishers (0.5s)
+  - Skip updates when nothing changed
+- **Efficient Monitoring**:
+  - Session checks every 30 seconds
+  - Menu bar updates every 2 minutes
+  - Early exits for inactive sessions
+  - Removed debug logging overhead
+
 ## 📋 Requirements
 
 - macOS 13.0 or later (Universal Binary: Intel & Apple Silicon)

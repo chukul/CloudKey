@@ -64,23 +64,24 @@ class SessionStore: ObservableObject {
     }
     
     private func startExpirationTimer() {
-        print("🔍 Starting expiration timer...")
         expirationTimer?.invalidate()
-        expirationTimer = Timer(timeInterval: 10, repeats: true) { [weak self] _ in
-            print("⏰ Timer fired at \(Date().formatted(date: .omitted, time: .standard))")
+        // Use coalescing timer for better power efficiency
+        expirationTimer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
             self?.checkExpiredSessions()
         }
+        expirationTimer?.tolerance = 5 // Allow 5 second tolerance for power efficiency
         RunLoop.main.add(expirationTimer!, forMode: .common)
-        print("✅ Expiration timer started")
     }
     
     private func checkExpiredSessions() {
+        // Early exit if no active sessions
+        let activeSessions = sessions.filter { $0.status == .active && $0.expiration != nil }
+        guard !activeSessions.isEmpty else { return }
+        
         var needsSave = false
         let now = Date()
         let warningThreshold: TimeInterval = 600 // 10 minutes
         let autoRenewThreshold: TimeInterval = 300 // 5 minutes
-        
-        print("🔍 Checking \(sessions.count) sessions for expiration...")
         
         for i in 0..<sessions.count {
             guard sessions[i].status == .active, let expiration = sessions[i].expiration else {
@@ -88,7 +89,6 @@ class SessionStore: ObservableObject {
             }
             
             let timeRemaining = expiration.timeIntervalSince(now)
-            print("🔍 \(sessions[i].alias): \(Int(timeRemaining/60))m remaining, warned: \(warnedSessionIds.contains(sessions[i].id)), autoRenew: \(sessions[i].autoRenew)")
             
             // Check if expired
             if timeRemaining <= 0 {
