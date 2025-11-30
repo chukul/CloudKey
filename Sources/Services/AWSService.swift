@@ -108,6 +108,54 @@ class AWSService {
         sessionTokenCache.removeAll()
         try? FileManager.default.removeItem(at: mfaCachePath)
         print("🧹 MFA session token cache cleared (memory and disk)")
+        
+        // Also clear all credentials from ~/.aws/credentials
+        clearAllCredentials()
+    }
+    
+    private func clearAllCredentials() {
+        let credentialsPath = self.credentialsURL
+        guard FileManager.default.fileExists(atPath: credentialsPath.path) else {
+            print("🧹 No credentials file to clear")
+            return
+        }
+        
+        do {
+            let content = try String(contentsOf: credentialsPath, encoding: .utf8)
+            var lines = content.components(separatedBy: .newlines)
+            var newLines: [String] = []
+            var skipSection = false
+            
+            for line in lines {
+                let trimmed = line.trimmingCharacters(in: .whitespaces)
+                
+                // Check if this is a profile header
+                if trimmed.hasPrefix("[") && trimmed.hasSuffix("]") {
+                    let profileName = trimmed.dropFirst().dropLast()
+                    // Skip profiles that have session tokens (temporary credentials)
+                    // Keep profiles without session tokens (IAM users)
+                    skipSection = false // Reset, we'll check in next lines
+                    
+                    // For now, add the header and check content
+                    newLines.append(line)
+                } else if trimmed.hasPrefix("aws_session_token") {
+                    // This section has a session token, mark to remove this entire section
+                    skipSection = true
+                    // Remove the profile header we just added
+                    if let lastIndex = newLines.lastIndex(where: { $0.trimmingCharacters(in: .whitespaces).hasPrefix("[") }) {
+                        newLines.removeLast(newLines.count - lastIndex)
+                    }
+                } else if !skipSection {
+                    newLines.append(line)
+                }
+            }
+            
+            let newContent = newLines.joined(separator: "\n")
+            try newContent.write(to: credentialsPath, atomically: true, encoding: .utf8)
+            print("🧹 Temporary session credentials cleared, IAM user profiles preserved")
+        } catch {
+            print("❌ Failed to clear credentials: \(error.localizedDescription)")
+        }
     }
     
     // For testing: get cache info

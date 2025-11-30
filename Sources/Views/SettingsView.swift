@@ -102,14 +102,14 @@ struct SettingsView: View {
                     }
                     .padding(4)
                 }
-                .alert("Clear MFA Cache?", isPresented: $showClearConfirm) {
+                .alert("Clear MFA Cache & Session Credentials?", isPresented: $showClearConfirm) {
                     Button("Cancel", role: .cancel) {}
                     Button("Clear", role: .destructive) {
                         AWSService.shared.clearMFACache()
-                        cacheInfo = "Cache cleared"
+                        cacheInfo = "Cache and session credentials cleared"
                     }
                 } message: {
-                    Text("You will need to enter MFA again for the next assume-role operation.")
+                    Text("This will clear MFA cache and remove temporary session credentials. IAM user profiles will be preserved.")
                 }
             }
             .formStyle(.grouped)

@@ -107,7 +107,8 @@ class SessionStore: ObservableObject {
                 attemptAutoRenewal(sessions[i])
             }
             // Check if expiring soon (within warning threshold) and not already warned
-            else if timeRemaining <= warningThreshold && !warnedSessionIds.contains(sessions[i].id) {
+            // Skip warning for sessions with auto-renew enabled
+            else if !sessions[i].autoRenew && timeRemaining <= warningThreshold && !warnedSessionIds.contains(sessions[i].id) {
                 print("⚠️  Session expiring soon: \(sessions[i].alias) in \(Int(timeRemaining/60)) minutes")
                 warnedSessionIds.insert(sessions[i].id)
                 showExpirationWarning(for: sessions[i])

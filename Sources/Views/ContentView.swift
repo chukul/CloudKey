@@ -23,6 +23,28 @@ struct ContentView: View {
         }
         .frame(minWidth: 900, minHeight: 600)
         .navigationSplitViewStyle(.balanced)
+        .overlay(alignment: .bottomTrailing) {
+            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+            let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "202511301520"
+            
+            // Format build number from YYYYMMDDHHmm to YY-MM-DD HH:mm
+            let formatted: String = {
+                if buildNumber.count == 12 {
+                    let year = buildNumber.prefix(4).suffix(2)
+                    let month = buildNumber.dropFirst(4).prefix(2)
+                    let day = buildNumber.dropFirst(6).prefix(2)
+                    let hour = buildNumber.dropFirst(8).prefix(2)
+                    let minute = buildNumber.dropFirst(10).prefix(2)
+                    return "\(year)-\(month)-\(day) \(hour):\(minute)"
+                }
+                return buildNumber
+            }()
+            
+            Text("v\(version) (Build: \(formatted))")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+                .padding(8)
+        }
         .alert("Session Expiring Soon", isPresented: $store.showExpirationWarning, presenting: store.expiringSession) { session in
             Button("Renew", role: .none) {
                 if session.skipMFACache {

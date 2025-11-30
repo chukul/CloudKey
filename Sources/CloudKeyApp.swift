@@ -60,6 +60,7 @@ class MenuBarManager {
     var cachedWarningIcon: NSImage?
     
     func setup(store: SessionStore?) async {
+        print("🔧 MenuBarManager setup started")
         self.sessionStore = store
         
         // Pre-cache icons
@@ -69,6 +70,7 @@ class MenuBarManager {
             appIcon.draw(in: NSRect(x: 0, y: 0, width: 18, height: 18))
             resizedIcon.unlockFocus()
             cachedAppIcon = resizedIcon
+            print("🔧 App icon cached")
         }
         
         let warningImage = NSImage(systemSymbolName: "exclamationmark.triangle.fill", accessibilityDescription: "Warning")
@@ -85,16 +87,19 @@ class MenuBarManager {
         }
         
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
+        print("🔧 Status item created: \(statusItem != nil)")
         
         if let button = statusItem?.button {
             // Use cached icon
             button.image = cachedAppIcon ?? NSImage(systemSymbolName: "cloud.fill", accessibilityDescription: "CloudKey")
             button.title = " 0"
+            print("🔧 Button configured")
         }
         
         updateMenuBar()
         startAutoUpdate()
         observeSessionChanges()
+        print("🔧 MenuBarManager setup complete")
     }
     
     func startAutoUpdate() {
@@ -133,25 +138,23 @@ class MenuBarManager {
         lastActiveCount = activeSessions.count
         lastExpiringCount = expiringCount
         
-        DispatchQueue.main.async { [weak self] in
-            if let button = self?.statusItem?.button {
-                if expiringCount > 0 {
-                    button.image = self?.cachedWarningIcon
-                    button.contentTintColor = .red
-                } else {
-                    button.image = self?.cachedAppIcon
-                    button.contentTintColor = nil
-                }
-                button.title = " \(activeSessions.count)"
+        if let button = statusItem?.button {
+            if expiringCount > 0 {
+                button.image = cachedWarningIcon
+                button.contentTintColor = .red
+            } else {
+                button.image = cachedAppIcon
+                button.contentTintColor = nil
             }
-            
-            self?.rebuildMenu(activeSessions: activeSessions)
+            button.title = " \(activeSessions.count)"
         }
+        
+        rebuildMenu(activeSessions: activeSessions)
     }
     
     func rebuildMenu(activeSessions: [Session]) {
         let menu = NSMenu()
-        menu.delegate = self // Set delegate for lazy loading
+        print("🔧 Rebuilding menu with \(activeSessions.count) active sessions")
         
         let header = NSMenuItem(title: "Active Sessions (\(activeSessions.count))", action: nil, keyEquivalent: "")
         header.isEnabled = false
@@ -163,9 +166,6 @@ class MenuBarManager {
             noSessions.isEnabled = false
             menu.addItem(noSessions)
         } else {
-            // Store sessions for lazy loading
-            menu.representedObject = activeSessions
-            
             for session in activeSessions {
                 let item = createSessionMenuItem(session)
                 menu.addItem(item)
@@ -181,6 +181,7 @@ class MenuBarManager {
         menu.addItem(NSMenuItem(title: "Quit", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         
         statusItem?.menu = menu
+        print("🔧 Menu assigned to status item: \(statusItem?.menu != nil)")
     }
     
     func createSessionMenuItem(_ session: Session) -> NSMenuItem {
@@ -266,11 +267,5 @@ class WindowDelegate: NSObject, NSWindowDelegate {
         // Hide from Dock
         NSApplication.shared.setActivationPolicy(.accessory)
         return false
-    }
-}
-
-extension MenuBarManager: NSMenuDelegate {
-    func menuWillOpen(_ menu: NSMenu) {
-        // Menu is about to open - items are already created
     }
 }

@@ -88,6 +88,7 @@ fi
 
 # Create Info.plist
 echo "Creating Info.plist..."
+BUILD_NUMBER=$(date +%Y%m%d%H%M)
 cat > "$CONTENTS/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -106,7 +107,7 @@ cat > "$CONTENTS/Info.plist" << EOF
     <key>CFBundleShortVersionString</key>
     <string>1.0</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>$BUILD_NUMBER</string>
     <key>LSMinimumSystemVersion</key>
     <string>13.0</string>
     <key>NSHighResolutionCapable</key>
@@ -121,4 +122,34 @@ EOF
 echo "APPL????" > "$CONTENTS/PkgInfo"
 
 echo "✅ App bundle created: $APP_BUNDLE"
+
+# Create DMG
+echo "Creating DMG..."
+DMG_NAME="CloudKey.dmg"
+rm -f "$DMG_NAME"
+
+if command -v create-dmg &> /dev/null; then
+    # Use create-dmg if available (brew install create-dmg)
+    create-dmg \
+      --volname "CloudKey" \
+      --window-pos 200 120 \
+      --window-size 600 400 \
+      --icon-size 100 \
+      --icon "CloudKey.app" 175 120 \
+      --hide-extension "CloudKey.app" \
+      --app-drop-link 425 120 \
+      "$DMG_NAME" \
+      "$APP_BUNDLE" 2>/dev/null && echo "✅ DMG created with create-dmg: $DMG_NAME"
+else
+    # Fallback to hdiutil
+    mkdir -p dmg-temp
+    cp -R "$APP_BUNDLE" dmg-temp/
+    hdiutil create -volname "CloudKey" -srcfolder dmg-temp -ov -format UDZO "$DMG_NAME" &> /dev/null
+    rm -rf dmg-temp
+    echo "✅ DMG created with hdiutil: $DMG_NAME"
+    echo "💡 Install create-dmg for better DMG: brew install create-dmg"
+fi
+
+echo ""
 echo "To run: open $APP_BUNDLE"
+echo "To distribute: Share $DMG_NAME"

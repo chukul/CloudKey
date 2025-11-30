@@ -10,6 +10,7 @@ struct SidebarView: View {
     @State private var mfaToken = ""
     @State private var sessionToStart: Session?
     @State private var showExportSuccess = false
+    @State private var showImportSuccess = false
     @State private var showImportError = false
     @State private var importErrorMessage = ""
     
@@ -255,6 +256,11 @@ struct SidebarView: View {
         } message: {
             Text("Profiles exported successfully")
         }
+        .alert("Import Successful", isPresented: $showImportSuccess) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Profiles imported successfully")
+        }
         .alert("Import Error", isPresented: $showImportError) {
             Button("OK", role: .cancel) {}
         } message: {
@@ -302,7 +308,7 @@ struct SidebarView: View {
                 do {
                     let data = try Data(contentsOf: url)
                     try store.importProfiles(from: data, replace: replace)
-                    showExportSuccess = true
+                    showImportSuccess = true
                 } catch {
                     importErrorMessage = "Failed to import: \(error.localizedDescription)"
                     showImportError = true
@@ -452,6 +458,12 @@ struct SessionRow: View {
     
     var body: some View {
         HStack(spacing: 10) {
+            // Default profile flag indicator
+            if session.status == .active && AWSService.shared.isDefaultProfile(session.alias) {
+                Text("🚩")
+                    .font(.caption)
+            }
+            
             // Status indicator with pulse animation
             Circle()
                 .fill(statusColor)
@@ -474,13 +486,6 @@ struct SessionRow: View {
             Image(systemName: typeIcon)
                 .foregroundColor(.secondary)
                 .frame(width: 16)
-            
-            // Default profile indicator
-            if session.status == .active && AWSService.shared.isDefaultProfile(session.alias) {
-                Image(systemName: "star.fill")
-                    .foregroundColor(.yellow)
-                    .font(.caption)
-            }
             
             // Session info
             VStack(alignment: .leading, spacing: 2) {
