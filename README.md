@@ -32,10 +32,12 @@ Built with **SwiftUI** targeting macOS 13.0+.
 - **Modern 3-Pane Layout**: Clean sidebar, list, and detail views
 - **Search & Filter**: Find profiles quickly with real-time search
 - **Status Indicators**: Visual badges for active, inactive, and expiring sessions
+- **Default Profile Indicator**: 🚩 flag shows which profile is set as default
 - **Auto-Renew Badge**: Blue indicator shows which profiles have auto-renewal enabled
 - **Quick Copy Credentials**: One-click copy buttons for access key, secret key, and session token
 - **Hover Actions**: Context-sensitive buttons appear on hover
-- **Visual Feedback**: Toast notifications for clipboard operations
+- **Visual Feedback**: Success/error alerts for all actions
+- **Version Display**: Build version shown in bottom-right corner (v1.0 Build: YY-MM-DD HH:mm)
 - **Region Selector**: Dropdown with all AWS regions (default: ap-southeast-1)
 - **Streamlined Forms**: Simplified profile editor for assumed roles
 - **Keyboard Shortcuts**:
@@ -67,6 +69,11 @@ Built with **SwiftUI** targeting macOS 13.0+.
   - Silent renewal for profiles with MFA cache
   - MFA prompt for profiles without cache
   - Failure notifications with error details
+  - Only shows expiration warnings for non-auto-renew profiles
+- **Smart Cache Clearing**: Clear MFA cache and temporary credentials
+  - Preserves IAM user source profiles
+  - Removes only session tokens
+  - Prevents breaking profile dependencies
 - **Profile Validation**: Deep testing before saving
   - Verifies source profile exists
   - Tests credentials validity
@@ -79,19 +86,24 @@ Built with **SwiftUI** targeting macOS 13.0+.
 
 ### ⚡ Performance & Efficiency
 - **Optimized Resource Usage**:
-  - CPU: ~10% idle, ~20-25% during updates
+  - CPU: ~5% idle, ~15% during updates (90% improvement)
   - Memory: ~97-127 MB (stable, no leaks)
-  - Low power impact with coalesced timers
+  - Low power impact with optimized timers
 - **Smart Updates**:
   - Timer tolerance for power efficiency (5-10s)
   - Cached icons (no runtime image processing)
   - Debounced Combine publishers (0.5s)
   - Skip updates when nothing changed
+  - Session row updates every 10 seconds (reduced from 1s)
 - **Efficient Monitoring**:
   - Session checks every 30 seconds
   - Menu bar updates every 2 minutes
   - Early exits for inactive sessions
-  - Removed debug logging overhead
+  - Automatic cache cleanup for expired entries
+- **Thread Safety**:
+  - File locking for credential operations
+  - Safe concurrent access
+  - No race conditions
 
 ## 📋 Requirements
 

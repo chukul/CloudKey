@@ -13,6 +13,9 @@ struct SidebarView: View {
     @State private var showImportSuccess = false
     @State private var showImportError = false
     @State private var importErrorMessage = ""
+    @State private var showDefaultSuccess = false
+    @State private var showDefaultError = false
+    @State private var defaultErrorMessage = ""
     
     var filteredSessions: [Session] {
         store.sessions.filter { session in
@@ -266,6 +269,16 @@ struct SidebarView: View {
         } message: {
             Text(importErrorMessage)
         }
+        .alert("Set as Default", isPresented: $showDefaultSuccess) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Profile set as default successfully")
+        }
+        .alert("Error", isPresented: $showDefaultError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(defaultErrorMessage)
+        }
     }
     
     private func exportProfiles() {
@@ -339,10 +352,11 @@ struct SidebarView: View {
             Button(action: {
                 do {
                     try AWSService.shared.setAsDefaultProfile(session)
-                    // Show success feedback
+                    showDefaultSuccess = true
                     NSSound.beep()
                 } catch {
-                    print("Failed to set as default: \(error.localizedDescription)")
+                    defaultErrorMessage = error.localizedDescription
+                    showDefaultError = true
                 }
             }) {
                 Label("Set as Default Profile", systemImage: "star.circle.fill")
@@ -454,7 +468,8 @@ struct SessionRow: View {
     @State private var isPulsing = false
     @State private var timeRemaining: String = ""
     
-    let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+    // Reduced from 1 second to 10 seconds for better performance
+    let timer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
     
     var body: some View {
         HStack(spacing: 10) {

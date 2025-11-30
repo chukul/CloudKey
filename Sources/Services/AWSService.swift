@@ -113,7 +113,25 @@ class AWSService {
         clearAllCredentials()
     }
     
+    // Clean up expired cache entries
+    private func cleanupExpiredCache() {
+        let now = Date()
+        let beforeCount = sessionTokenCache.count
+        sessionTokenCache = sessionTokenCache.filter { $0.value.expiration > now }
+        let afterCount = sessionTokenCache.count
+        
+        if beforeCount != afterCount {
+            print("🧹 Cleaned up \(beforeCount - afterCount) expired cache entries")
+            saveMFACache()
+        }
+    }
+    
+    private let credentialsLock = NSLock()
+    
     private func clearAllCredentials() {
+        credentialsLock.lock()
+        defer { credentialsLock.unlock() }
+        
         let credentialsPath = self.credentialsURL
         guard FileManager.default.fileExists(atPath: credentialsPath.path) else {
             print("🧹 No credentials file to clear")
@@ -122,7 +140,7 @@ class AWSService {
         
         do {
             let content = try String(contentsOf: credentialsPath, encoding: .utf8)
-            var lines = content.components(separatedBy: .newlines)
+            let lines = content.components(separatedBy: .newlines)
             var newLines: [String] = []
             var skipSection = false
             
