@@ -17,8 +17,27 @@ struct MFAInputView: View {
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
             
-            MacTextField(text: $mfaToken, placeholder: "Token Code", onSubmit: onSubmit)
-                .frame(width: 200, height: 30)
+            HStack(spacing: 8) {
+                MacTextField(text: $mfaToken, placeholder: "Token Code", onSubmit: onSubmit)
+                    .frame(width: 200, height: 30)
+                
+                Button(action: {
+                    if let clipboard = NSPasteboard.general.string(forType: .string) {
+                        // Extract only digits from clipboard
+                        let digits = clipboard.filter { $0.isNumber }
+                        if digits.count == 6 {
+                            mfaToken = digits
+                        } else {
+                            mfaToken = clipboard
+                        }
+                    }
+                }) {
+                    Image(systemName: "doc.on.clipboard")
+                        .font(.title3)
+                }
+                .buttonStyle(.borderless)
+                .help("Paste from clipboard")
+            }
             
             HStack(spacing: 12) {
                 Button("Cancel") {

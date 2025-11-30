@@ -16,6 +16,8 @@ struct SidebarView: View {
     @State private var showDefaultSuccess = false
     @State private var showDefaultError = false
     @State private var defaultErrorMessage = ""
+    @State private var showDeleteConfirm = false
+    @State private var sessionToDelete: Session?
     
     var filteredSessions: [Session] {
         store.sessions.filter { session in
@@ -279,6 +281,16 @@ struct SidebarView: View {
         } message: {
             Text(defaultErrorMessage)
         }
+        .confirmationDialog("Delete Profile?", isPresented: $showDeleteConfirm, presenting: sessionToDelete) { session in
+            Button("Delete \(session.alias)", role: .destructive) {
+                if let index = store.sessions.firstIndex(where: { $0.id == session.id }) {
+                    store.deleteSession(at: IndexSet(integer: index))
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { session in
+            Text("This will permanently delete '\(session.alias)'. This action cannot be undone.")
+        }
     }
     
     private func exportProfiles() {
@@ -432,9 +444,8 @@ struct SidebarView: View {
         }
         
         Button(role: .destructive, action: {
-            if let index = store.sessions.firstIndex(where: { $0.id == session.id }) {
-                store.deleteSession(at: IndexSet(integer: index))
-            }
+            sessionToDelete = session
+            showDeleteConfirm = true
         }) {
             Label("Delete", systemImage: "trash")
         }

@@ -36,6 +36,13 @@ struct CloudKeyApp: App {
                     store.load()
                 }
                 .keyboardShortcut("r", modifiers: .command)
+                
+                Divider()
+                
+                Button("Delete Profile") {
+                    // Handled by sidebar
+                }
+                .keyboardShortcut(.delete, modifiers: [])
             }
         }
         

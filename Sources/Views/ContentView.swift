@@ -83,6 +83,8 @@ struct ContentView: View {
 
 struct EmptyStateView: View {
     @State private var isAnimating = false
+    @EnvironmentObject var store: SessionStore
+    @State private var showProfileEditor = false
     
     var body: some View {
         VStack(spacing: 20) {
@@ -93,24 +95,57 @@ struct EmptyStateView: View {
                 .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isAnimating)
             
             VStack(spacing: 8) {
-                Text("Select a profile")
+                Text("No Profiles Yet")
                     .font(.title2)
                     .fontWeight(.semibold)
                     .foregroundColor(.primary)
                 
-                Text("Choose a profile from the sidebar to view details")
+                Text("Get started by creating your first AWS profile")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            VStack(spacing: 12) {
+                Button(action: {
+                    showProfileEditor = true
+                }) {
+                    Label("Create Your First Profile", systemImage: "plus.circle.fill")
+                        .font(.body)
+                        .fontWeight(.semibold)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.large)
                 
-                Text("or press ⌘N to create a new one")
+                Text("or press ⌘N")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                    .padding(.top, 4)
             }
+            .padding(.top, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onAppear {
             isAnimating = true
+        }
+        .sheet(isPresented: $showProfileEditor) {
+            ProfileEditorView(
+                session: Session(
+                    alias: "",
+                    profileName: "default",
+                    region: "ap-southeast-1",
+                    accountId: "",
+                    status: .inactive,
+                    type: .assumedRole,
+                    logs: []
+                ),
+                onSave: { session in
+                    store.addSession(session)
+                    showProfileEditor = false
+                },
+                onCancel: {
+                    showProfileEditor = false
+                }
+            )
         }
     }
 }
