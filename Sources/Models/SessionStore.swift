@@ -11,6 +11,7 @@ class SessionStore: ObservableObject {
     @Published var expiringSession: Session? // Session that's about to expire
     @Published var showExpirationWarning = false
     @Published var isAWSCLIAvailable = true
+    @Published var lastUpdate = Date() // Shared timer tick for all views
     
     private let savePath: URL
     private let recentPath: URL
@@ -80,6 +81,7 @@ class SessionStore: ObservableObject {
         expirationTimer?.invalidate()
         // Use coalescing timer for better power efficiency
         expirationTimer = Timer(timeInterval: 30, repeats: true) { [weak self] _ in
+            self?.lastUpdate = Date() // Broadcast update to all views
             self?.checkExpiredSessions()
         }
         expirationTimer?.tolerance = 5 // Allow 5 second tolerance for power efficiency

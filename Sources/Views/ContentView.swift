@@ -65,7 +65,6 @@ struct ContentView: View {
 }
 
 struct EmptyStateView: View {
-    @State private var isAnimating = false
     @EnvironmentObject var store: SessionStore
     @State private var showProfileEditor = false
     
@@ -74,8 +73,6 @@ struct EmptyStateView: View {
             Image(systemName: "tray")
                 .font(.system(size: 64))
                 .foregroundColor(.secondary)
-                .scaleEffect(isAnimating ? 1.1 : 1.0)
-                .animation(.easeInOut(duration: 1.0).repeatForever(autoreverses: true), value: isAnimating)
             
             VStack(spacing: 8) {
                 Text("No Profiles Yet")
@@ -107,9 +104,6 @@ struct EmptyStateView: View {
             .padding(.top, 8)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear {
-            isAnimating = true
-        }
         .sheet(isPresented: $showProfileEditor) {
             ProfileEditorView(
                 session: Session(
@@ -135,6 +129,8 @@ struct EmptyStateView: View {
 
 struct StatusBarView: View {
     @EnvironmentObject var store: SessionStore
+    @State private var profileCount = 0
+    @State private var activeCount = 0
     
     var body: some View {
         HStack(spacing: 16) {
@@ -143,7 +139,7 @@ struct StatusBarView: View {
                 Image(systemName: "folder.fill")
                     .font(.caption)
                     .foregroundColor(.secondary)
-                Text("\(store.sessions.count) profiles")
+                Text("\(profileCount) profiles")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -156,7 +152,7 @@ struct StatusBarView: View {
                 Circle()
                     .fill(Color.green)
                     .frame(width: 6, height: 6)
-                Text("\(store.sessions.filter { $0.status == .active }.count) active")
+                Text("\(activeCount) active")
                     .font(.caption)
                     .foregroundColor(.secondary)
             }
@@ -191,6 +187,14 @@ struct StatusBarView: View {
                 .foregroundColor(Color(NSColor.separatorColor)),
             alignment: .top
         )
+        .onReceive(store.$sessions.debounce(for: .seconds(1), scheduler: DispatchQueue.main)) { sessions in
+            profileCount = sessions.count
+            activeCount = sessions.filter { $0.status == .active }.count
+        }
+        .onAppear {
+            profileCount = store.sessions.count
+            activeCount = store.sessions.filter { $0.status == .active }.count
+        }
     }
     
     private var versionString: String {

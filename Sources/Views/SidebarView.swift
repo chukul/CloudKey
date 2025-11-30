@@ -478,11 +478,6 @@ struct SessionRow: View {
     let session: Session
     let onQuickAction: () -> Void
     @State private var isHovered = false
-    @State private var isPulsing = false
-    @State private var timeRemaining: String = ""
-    
-    // Reduced from 1 second to 10 seconds for better performance
-    let timer = Timer.publish(every: 10, on: .main, in: .common).autoconnect()
     
     var body: some View {
         HStack(spacing: 10) {
@@ -492,23 +487,10 @@ struct SessionRow: View {
                     .font(.caption)
             }
             
-            // Status indicator with pulse animation
+            // Status indicator
             Circle()
                 .fill(statusColor)
                 .frame(width: 8, height: 8)
-                .overlay(
-                    Circle()
-                        .stroke(statusColor.opacity(0.3), lineWidth: session.status == .active ? 4 : 0)
-                        .scaleEffect(isPulsing ? 1.5 : 1.0)
-                        .opacity(isPulsing ? 0 : 1)
-                )
-                .onAppear {
-                    if session.status == .active {
-                        withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: false)) {
-                            isPulsing = true
-                        }
-                    }
-                }
             
             // Type icon
             Image(systemName: typeIcon)
@@ -531,15 +513,7 @@ struct SessionRow: View {
                         Text("•")
                             .font(.caption)
                             .foregroundColor(.secondary)
-                        Text(timeRemaining)
-                            .font(.caption)
-                            .foregroundColor(expirationColor)
-                            .onReceive(timer) { _ in
-                                updateTimeRemaining(expiration: expiration)
-                            }
-                            .onAppear {
-                                updateTimeRemaining(expiration: expiration)
-                            }
+                        TimeRemainingView(expiration: expiration)
                     }
                 }
             }
@@ -579,39 +553,6 @@ struct SessionRow: View {
         }
     }
     
-    private func updateTimeRemaining(expiration: Date) {
-        let now = Date()
-        let remaining = expiration.timeIntervalSince(now)
-        
-        if remaining <= 0 {
-            timeRemaining = "Expired"
-        } else if remaining < 300 { // Less than 5 minutes
-            let minutes = Int(remaining / 60)
-            let seconds = Int(remaining.truncatingRemainder(dividingBy: 60))
-            timeRemaining = String(format: "%d:%02d", minutes, seconds)
-        } else if remaining < 3600 { // Less than 1 hour
-            let minutes = Int(remaining / 60)
-            timeRemaining = "\(minutes)m"
-        } else {
-            let hours = Int(remaining / 3600)
-            let minutes = Int((remaining.truncatingRemainder(dividingBy: 3600)) / 60)
-            timeRemaining = "\(hours)h \(minutes)m"
-        }
-    }
-    
-    private var expirationColor: Color {
-        guard let expiration = session.expiration else { return .secondary }
-        let remaining = expiration.timeIntervalSince(Date())
-        
-        if remaining < 300 { // Less than 5 minutes
-            return .red
-        } else if remaining < 900 { // Less than 15 minutes
-            return .orange
-        } else {
-            return .secondary
-        }
-    }
-    
     var statusColor: Color {
         switch session.status {
         case .active: return .green
@@ -625,6 +566,54 @@ struct SessionRow: View {
         case .iamUser: return "person.fill"
         case .sso: return "arrow.triangle.2.circlepath"
         case .assumedRole: return "key.fill"
+        }
+    }
+}
+
+// Separate view for time remaining - only updates when visible and active
+struct TimeRemainingView: View {
+    let expiration: Date
+    @State private var timeRemaining: String = ""
+    @State private var color: Color = .secondary
+    
+    let timer = Timer.publish(every: 60, on: .main, in: .common).autoconnect()
+    
+    var body: some View {
+        Text(timeRemaining)
+            .font(.caption)
+            .foregroundColor(color)
+            .onAppear {
+                updateTime()
+            }
+            .onReceive(timer) { _ in
+                updateTime()
+            }
+    }
+    
+    private func updateTime() {
+        let remaining = expiration.timeIntervalSince(Date())
+        
+        if remaining <= 0 {
+            timeRemaining = "Expired"
+            color = .red
+        } else if remaining < 300 {
+            let minutes = Int(remaining / 60)
+            let seconds = Int(remaining.truncatingRemainder(dividingBy: 60))
+            timeRemaining = String(format: "%d:%02d", minutes, seconds)
+            color = .red
+        } else if remaining < 900 {
+            let minutes = Int(remaining / 60)
+            timeRemaining = "\(minutes)m"
+            color = .orange
+        } else if remaining < 3600 {
+            let minutes = Int(remaining / 60)
+            timeRemaining = "\(minutes)m"
+            color = .secondary
+        } else {
+            let hours = Int(remaining / 3600)
+            let minutes = Int((remaining.truncatingRemainder(dividingBy: 3600)) / 60)
+            timeRemaining = "\(hours)h \(minutes)m"
+            color = .secondary
         }
     }
 }
