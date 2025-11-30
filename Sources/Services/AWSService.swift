@@ -128,6 +128,20 @@ class AWSService {
     
     private let credentialsLock = NSLock()
     
+    func isAWSCLIAvailable() async -> Bool {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: awsPath)
+        process.arguments = ["--version"]
+        
+        do {
+            try process.run()
+            process.waitUntilExit()
+            return process.terminationStatus == 0
+        } catch {
+            return false
+        }
+    }
+    
     private func clearAllCredentials() {
         credentialsLock.lock()
         defer { credentialsLock.unlock() }

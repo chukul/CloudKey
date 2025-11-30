@@ -408,6 +408,7 @@ struct SidebarView: View {
                 Label(session.skipMFACache ? "✓ Skip MFA Cache (federation)" : "Use MFA Cache (faster)", 
                       systemImage: session.skipMFACache ? "network" : "bolt.fill")
             }
+            .help(session.skipMFACache ? "MFA required each time. Enables AWS Console federation." : "Cache MFA for 12 hours. Faster but no Console access.")
             
             Divider()
         }
@@ -421,6 +422,7 @@ struct SidebarView: View {
             Label(session.autoRenew ? "✓ Auto-Renew Enabled" : "Enable Auto-Renew", 
                   systemImage: session.autoRenew ? "arrow.clockwise.circle.fill" : "arrow.clockwise.circle")
         }
+        .help("Automatically renew session 5 minutes before expiration. No warning popup.")
         
         Divider()
         

@@ -9,41 +9,24 @@ struct ContentView: View {
     @State private var sessionToRenew: Session?
     
     var body: some View {
-        NavigationSplitView(columnVisibility: $columnVisibility) {
-            SidebarView(selection: $selection)
-                .frame(minWidth: 250, idealWidth: 300)
-        } detail: {
-            if let id = selection, let session = store.sessions.first(where: { $0.id == id }) {
-                DetailView(session: session)
-                    .id(session.id)
-                    .transition(.opacity.combined(with: .move(edge: .trailing)))
-            } else {
-                EmptyStateView()
-            }
-        }
-        .frame(minWidth: 900, minHeight: 600)
-        .navigationSplitViewStyle(.balanced)
-        .overlay(alignment: .bottomTrailing) {
-            let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
-            let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "202511301520"
-            
-            // Format build number from YYYYMMDDHHmm to YY-MM-DD HH:mm
-            let formatted: String = {
-                if buildNumber.count == 12 {
-                    let year = buildNumber.prefix(4).suffix(2)
-                    let month = buildNumber.dropFirst(4).prefix(2)
-                    let day = buildNumber.dropFirst(6).prefix(2)
-                    let hour = buildNumber.dropFirst(8).prefix(2)
-                    let minute = buildNumber.dropFirst(10).prefix(2)
-                    return "\(year)-\(month)-\(day) \(hour):\(minute)"
+        VStack(spacing: 0) {
+            NavigationSplitView(columnVisibility: $columnVisibility) {
+                SidebarView(selection: $selection)
+                    .frame(minWidth: 250, idealWidth: 300)
+            } detail: {
+                if let id = selection, let session = store.sessions.first(where: { $0.id == id }) {
+                    DetailView(session: session)
+                        .id(session.id)
+                        .transition(.opacity.combined(with: .move(edge: .trailing)))
+                } else {
+                    EmptyStateView()
                 }
-                return buildNumber
-            }()
+            }
+            .frame(minWidth: 900, minHeight: 600)
+            .navigationSplitViewStyle(.balanced)
             
-            Text("v\(version) (Build: \(formatted))")
-                .font(.caption2)
-                .foregroundColor(.secondary)
-                .padding(8)
+            // Status Bar
+            StatusBarView()
         }
         .alert("Session Expiring Soon", isPresented: $store.showExpirationWarning, presenting: store.expiringSession) { session in
             Button("Renew", role: .none) {
@@ -147,5 +130,86 @@ struct EmptyStateView: View {
                 }
             )
         }
+    }
+}
+
+struct StatusBarView: View {
+    @EnvironmentObject var store: SessionStore
+    
+    var body: some View {
+        HStack(spacing: 16) {
+            // Total profiles
+            HStack(spacing: 4) {
+                Image(systemName: "folder.fill")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                Text("\(store.sessions.count) profiles")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Divider()
+                .frame(height: 12)
+            
+            // Active sessions
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(Color.green)
+                    .frame(width: 6, height: 6)
+                Text("\(store.sessions.filter { $0.status == .active }.count) active")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            // Version
+            Text(versionString)
+                .font(.caption2)
+                .foregroundColor(.secondary)
+            
+            Divider()
+                .frame(height: 12)
+            
+            // Connection status
+            HStack(spacing: 4) {
+                Image(systemName: store.isAWSCLIAvailable ? "checkmark.circle.fill" : "xmark.circle.fill")
+                    .font(.caption)
+                    .foregroundColor(store.isAWSCLIAvailable ? .green : .red)
+                Text(store.isAWSCLIAvailable ? "AWS CLI" : "No AWS CLI")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .help(store.isAWSCLIAvailable ? "AWS CLI is available" : "AWS CLI not found. Install with: brew install awscli")
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
+        .background(Color(NSColor.controlBackgroundColor))
+        .overlay(
+            Rectangle()
+                .frame(height: 1)
+                .foregroundColor(Color(NSColor.separatorColor)),
+            alignment: .top
+        )
+    }
+    
+    private var versionString: String {
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0"
+        let buildNumber = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "202511301520"
+        
+        // Format build number from YYYYMMDDHHmm to YY-MM-DD HH:mm
+        let formatted: String = {
+            if buildNumber.count == 12 {
+                let year = buildNumber.prefix(4).suffix(2)
+                let month = buildNumber.dropFirst(4).prefix(2)
+                let day = buildNumber.dropFirst(6).prefix(2)
+                let hour = buildNumber.dropFirst(8).prefix(2)
+                let minute = buildNumber.dropFirst(10).prefix(2)
+                return "\(year)-\(month)-\(day) \(hour):\(minute)"
+            }
+            return buildNumber
+        }()
+        
+        return "v\(version) (Build: \(formatted))"
     }
 }

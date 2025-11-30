@@ -8,6 +8,7 @@ struct DetailView: View {
     @State private var mfaToken = ""
     @State private var showCopiedNotification = false
     @State private var isStarting = false
+    @State private var showCredentials = false
     
     // Get live session from store
     private var liveSession: Session {
@@ -262,18 +263,6 @@ struct DetailView: View {
         copyToClipboard(value)
     }
     
-    private func copySecretKey() {
-        if let secret = getCredentialFromFile(key: "aws_secret_access_key") {
-            copyToClipboard(secret)
-        }
-    }
-    
-    private func copySessionToken() {
-        if let token = getCredentialFromFile(key: "aws_session_token") {
-            copyToClipboard(token)
-        }
-    }
-    
     private func getCredentialFromFile(key: String) -> String? {
         let credPath = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent(".aws/credentials")
@@ -365,6 +354,7 @@ struct DetailView: View {
 struct DetailsTab: View {
     let session: Session
     @State private var showCopiedNotification = false
+    @State private var showCredentials = false
     
     var body: some View {
         ZStack {
@@ -421,8 +411,9 @@ struct DetailsTab: View {
                                     Text("Secret Key")
                                         .foregroundColor(.secondary)
                                     Spacer()
-                                    Text("••••••••")
+                                    Text(showCredentials ? (getSecretKey() ?? "••••••••") : "••••••••")
                                         .foregroundColor(.primary)
+                                        .font(.system(.body, design: .monospaced))
                                     Button(action: { copySecretKey() }) {
                                         Image(systemName: "doc.on.doc")
                                     }
@@ -436,8 +427,9 @@ struct DetailsTab: View {
                                     Text("Session Token")
                                         .foregroundColor(.secondary)
                                     Spacer()
-                                    Text("••••••••")
+                                    Text(showCredentials ? String((getSessionToken() ?? "••••••••").prefix(20)) + "..." : "••••••••")
                                         .foregroundColor(.primary)
+                                        .font(.system(.body, design: .monospaced))
                                     Button(action: { copySessionToken() }) {
                                         Image(systemName: "doc.on.doc")
                                     }
@@ -451,8 +443,17 @@ struct DetailsTab: View {
                             }
                         }
                     } label: {
-                        Label("Active Credentials", systemImage: "checkmark.shield.fill")
-                            .font(.headline)
+                        HStack {
+                            Label("Active Credentials", systemImage: "checkmark.shield.fill")
+                                .font(.headline)
+                            Spacer()
+                            Button(action: { showCredentials.toggle() }) {
+                                Image(systemName: showCredentials ? "eye.slash.fill" : "eye.fill")
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.borderless)
+                            .help(showCredentials ? "Hide credentials" : "Show credentials")
+                        }
                     }
                 }
             }
@@ -518,6 +519,14 @@ struct DetailsTab: View {
                 }
             }
         }
+    }
+    
+    private func getSecretKey() -> String? {
+        return getCredentialFromFile(key: "aws_secret_access_key")
+    }
+    
+    private func getSessionToken() -> String? {
+        return getCredentialFromFile(key: "aws_session_token")
     }
     
     private func getCredentialFromFile(key: String) -> String? {

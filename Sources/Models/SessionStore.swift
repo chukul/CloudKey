@@ -10,6 +10,7 @@ class SessionStore: ObservableObject {
     @Published var recentSessionIds: [UUID] = []
     @Published var expiringSession: Session? // Session that's about to expire
     @Published var showExpirationWarning = false
+    @Published var isAWSCLIAvailable = true
     
     private let savePath: URL
     private let recentPath: URL
@@ -49,9 +50,21 @@ class SessionStore: ObservableObject {
         // Request notification permissions
         requestNotificationPermissions()
         
+        // Check AWS CLI availability
+        checkAWSCLI()
+        
         // Start expiration check timer on main queue
         DispatchQueue.main.async { [weak self] in
             self?.startExpirationTimer()
+        }
+    }
+    
+    func checkAWSCLI() {
+        Task {
+            let available = await AWSService.shared.isAWSCLIAvailable()
+            await MainActor.run {
+                isAWSCLIAvailable = available
+            }
         }
     }
     
