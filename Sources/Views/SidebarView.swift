@@ -18,6 +18,8 @@ struct SidebarView: View {
     @State private var defaultErrorMessage = ""
     @State private var showDeleteConfirm = false
     @State private var sessionToDelete: Session?
+    @State private var showTOTPSetup = false
+    @State private var sessionForTOTPSetup: Session?
     
     var filteredSessions: [Session] {
         store.sessions.filter { session in
@@ -243,18 +245,28 @@ struct SidebarView: View {
             )
         }
         .sheet(isPresented: $showMFAAlert) {
-            MFAInputView(mfaToken: $mfaToken, onSubmit: {
-                if let session = sessionToStart {
-                    store.toggleSession(session, mfaToken: mfaToken)
+            MFAInputView(
+                mfaToken: $mfaToken,
+                profileAlias: sessionToStart?.alias,
+                onSubmit: {
+                    if let session = sessionToStart {
+                        store.toggleSession(session, mfaToken: mfaToken)
+                    }
+                    showMFAAlert = false
+                    mfaToken = ""
+                    sessionToStart = nil
+                },
+                onCancel: {
+                    showMFAAlert = false
+                    mfaToken = ""
+                    sessionToStart = nil
                 }
-                showMFAAlert = false
-                mfaToken = ""
-                sessionToStart = nil
-            }, onCancel: {
-                showMFAAlert = false
-                mfaToken = ""
-                sessionToStart = nil
-            })
+            )
+        }
+        .sheet(isPresented: $showTOTPSetup) {
+            if let session = sessionForTOTPSetup {
+                TOTPSetupView(profileAlias: session.alias, isPresented: $showTOTPSetup)
+            }
         }
         .alert("Export Successful", isPresented: $showExportSuccess) {
             Button("OK", role: .cancel) {}
@@ -423,6 +435,21 @@ struct SidebarView: View {
                   systemImage: session.autoRenew ? "arrow.clockwise.circle.fill" : "arrow.clockwise.circle")
         }
         .help("Automatically renew session 5 minutes before expiration. No warning popup.")
+        
+        // TOTP setup (only for profiles with MFA)
+        if session.mfaSerial != nil {
+            Button(action: {
+                sessionForTOTPSetup = session
+                showTOTPSetup = true
+            }) {
+                if TOTPService.shared.hasTOTPSecret(for: session.alias) {
+                    Label("✓ TOTP Configured", systemImage: "lock.shield.fill")
+                } else {
+                    Label("Setup TOTP Authenticator", systemImage: "lock.shield")
+                }
+            }
+            .help("Configure built-in TOTP generator for auto-fill MFA codes")
+        }
         
         Divider()
         

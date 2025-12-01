@@ -3,8 +3,17 @@ import AppKit
 
 struct MFAInputView: View {
     @Binding var mfaToken: String
+    let profileAlias: String?
     let onSubmit: () -> Void
     let onCancel: () -> Void
+    @State private var totpCode: String = ""
+    @State private var timeRemaining: Int = 30
+    @State private var timer: Timer?
+    
+    var hasTOTP: Bool {
+        guard let alias = profileAlias else { return false }
+        return TOTPService.shared.hasTOTPSecret(for: alias)
+    }
     
     var body: some View {
         VStack(spacing: 20) {
@@ -12,10 +21,52 @@ struct MFAInputView: View {
                 .font(.title2)
                 .fontWeight(.semibold)
             
-            Text("Please enter the 6-digit code from your MFA device.")
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+            if hasTOTP {
+                Text("Auto-generated TOTP code or enter manually")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            } else {
+                Text("Please enter the 6-digit code from your MFA device.")
+                    .font(.body)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            
+            // TOTP auto-fill section
+            if hasTOTP {
+                VStack(spacing: 12) {
+                    HStack(spacing: 12) {
+                        Text(totpCode.isEmpty ? "------" : totpCode)
+                            .font(.system(size: 32, weight: .bold, design: .monospaced))
+                            .foregroundColor(totpCode.isEmpty ? .secondary : .primary)
+                        
+                        VStack(spacing: 4) {
+                            Text("\(timeRemaining)s")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            
+                            ProgressView(value: Double(timeRemaining), total: 30)
+                                .frame(width: 40)
+                        }
+                    }
+                    
+                    Button(action: {
+                        mfaToken = totpCode
+                    }) {
+                        Label("Use This Code", systemImage: "arrow.down.circle.fill")
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(totpCode.isEmpty)
+                }
+                .padding()
+                .background(Color(NSColor.controlBackgroundColor))
+                .cornerRadius(8)
+                
+                Text("or enter manually:")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
             
             HStack(spacing: 8) {
                 MacTextField(text: $mfaToken, placeholder: "Token Code", onSubmit: onSubmit)
@@ -54,6 +105,35 @@ struct MFAInputView: View {
         }
         .padding(30)
         .frame(width: 400)
+        .onAppear {
+            if hasTOTP {
+                updateTOTPCode()
+                startTimer()
+            }
+        }
+        .onDisappear {
+            stopTimer()
+        }
+    }
+    
+    func updateTOTPCode() {
+        guard let alias = profileAlias else { return }
+        totpCode = TOTPService.shared.generateTOTPCode(for: alias) ?? ""
+        timeRemaining = TOTPService.shared.getTimeRemaining()
+    }
+    
+    func startTimer() {
+        timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+            timeRemaining = TOTPService.shared.getTimeRemaining()
+            if timeRemaining == 30 {
+                updateTOTPCode()
+            }
+        }
+    }
+    
+    func stopTimer() {
+        timer?.invalidate()
+        timer = nil
     }
 }
 

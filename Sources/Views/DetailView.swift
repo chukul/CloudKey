@@ -249,13 +249,18 @@ struct DetailView: View {
             }
         }
         .sheet(isPresented: $showMFAAlert) {
-            MFAInputView(mfaToken: $mfaToken, onSubmit: {
-                store.toggleSession(session, mfaToken: mfaToken)
-                showMFAAlert = false
-                mfaToken = ""
-            }, onCancel: {
-                showMFAAlert = false
-            })
+            MFAInputView(
+                mfaToken: $mfaToken,
+                profileAlias: session.alias,
+                onSubmit: {
+                    store.toggleSession(session, mfaToken: mfaToken)
+                    showMFAAlert = false
+                    mfaToken = ""
+                },
+                onCancel: {
+                    showMFAAlert = false
+                }
+            )
         }
     }
     

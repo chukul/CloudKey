@@ -289,13 +289,18 @@ struct ProfileEditorView: View {
         }
         .frame(width: 650, height: validationReport != nil ? 700 : 600)
         .sheet(isPresented: $showMFAForValidation) {
-            MFAInputView(mfaToken: $validationMfaToken, onSubmit: {
-                showMFAForValidation = false
-                performValidation()
-            }, onCancel: {
-                showMFAForValidation = false
-                validationMfaToken = ""
-            })
+            MFAInputView(
+                mfaToken: $validationMfaToken,
+                profileAlias: alias,
+                onSubmit: {
+                    showMFAForValidation = false
+                    performValidation()
+                },
+                onCancel: {
+                    showMFAForValidation = false
+                    validationMfaToken = ""
+                }
+            )
         }
     }
     

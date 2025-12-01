@@ -48,18 +48,23 @@ struct ContentView: View {
             }
         }
         .sheet(isPresented: $showMFAForRenewal) {
-            MFAInputView(mfaToken: $mfaToken, onSubmit: {
-                if let session = sessionToRenew {
-                    store.renewSession(session, mfaToken: mfaToken)
+            MFAInputView(
+                mfaToken: $mfaToken,
+                profileAlias: sessionToRenew?.alias,
+                onSubmit: {
+                    if let session = sessionToRenew {
+                        store.renewSession(session, mfaToken: mfaToken)
+                    }
+                    showMFAForRenewal = false
+                    mfaToken = ""
+                    sessionToRenew = nil
+                },
+                onCancel: {
+                    showMFAForRenewal = false
+                    mfaToken = ""
+                    sessionToRenew = nil
                 }
-                showMFAForRenewal = false
-                mfaToken = ""
-                sessionToRenew = nil
-            }, onCancel: {
-                showMFAForRenewal = false
-                mfaToken = ""
-                sessionToRenew = nil
-            })
+            )
         }
     }
 }

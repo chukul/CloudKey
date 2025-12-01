@@ -232,12 +232,16 @@ class AWSService {
         var i = profileIndex + 1
         while i < lines.count && !lines[i].hasPrefix("[") {
             let line = lines[i].trimmingCharacters(in: .whitespaces)
+            
             if line.hasPrefix("aws_access_key_id") {
-                accessKey = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                let parts = line.components(separatedBy: "=")
+                accessKey = parts.dropFirst().joined(separator: "=").trimmingCharacters(in: .whitespaces)
             } else if line.hasPrefix("aws_secret_access_key") {
-                secretKey = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                let parts = line.components(separatedBy: "=")
+                secretKey = parts.dropFirst().joined(separator: "=").trimmingCharacters(in: .whitespaces)
             } else if line.hasPrefix("aws_session_token") {
-                sessionToken = line.components(separatedBy: "=").last?.trimmingCharacters(in: .whitespaces) ?? ""
+                let parts = line.components(separatedBy: "=")
+                sessionToken = parts.dropFirst().joined(separator: "=").trimmingCharacters(in: .whitespaces)
             }
             i += 1
         }
@@ -245,20 +249,25 @@ class AWSService {
         // Remove existing [default] section
         if let defaultIndex = lines.firstIndex(of: "[default]") {
             var endIndex = defaultIndex + 1
-            while endIndex < lines.count && !lines[endIndex].hasPrefix("[") {
+            while endIndex < lines.count && !lines[endIndex].hasPrefix("[") && !lines[endIndex].isEmpty {
+                endIndex += 1
+            }
+            if endIndex < lines.count && lines[endIndex].isEmpty {
                 endIndex += 1
             }
             lines.removeSubrange(defaultIndex..<endIndex)
         }
         
-        // Add new [default] section
-        lines.append("[default]")
-        lines.append("aws_access_key_id = \(accessKey)")
-        lines.append("aws_secret_access_key = \(secretKey)")
+        // Add new [default] section at the beginning
+        var defaultSection = ["[default]"]
+        defaultSection.append("aws_access_key_id = \(accessKey)")
+        defaultSection.append("aws_secret_access_key = \(secretKey)")
         if !sessionToken.isEmpty {
-            lines.append("aws_session_token = \(sessionToken)")
+            defaultSection.append("aws_session_token = \(sessionToken)")
         }
-        lines.append("")
+        defaultSection.append("")
+        
+        lines.insert(contentsOf: defaultSection, at: 0)
         
         let newContent = lines.joined(separator: "\n")
         try newContent.write(to: credentialsPath, atomically: true, encoding: .utf8)

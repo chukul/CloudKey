@@ -40,6 +40,7 @@ struct Session: Identifiable, Codable, Hashable {
     var logs: [String] = [] // Console output logs
     var skipMFACache: Bool = false // If true, bypass MFA cache for federation compatibility
     var autoRenew: Bool = false // If true, automatically renew session before expiration
+    var totpEnabled: Bool = false // If true, use built-in TOTP generator instead of manual MFA
     
     static var mockData: [Session] {
         [

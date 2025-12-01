@@ -9,9 +9,13 @@ let package = Package(
     products: [
         .executable(name: "CloudKey", targets: ["CloudKey"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/lachlanbell/SwiftOTP", from: "3.0.0")
+    ],
     targets: [
         .executableTarget(
             name: "CloudKey",
+            dependencies: ["SwiftOTP"],
             path: "Sources",
             resources: [
                 .process("../Assets.xcassets")
