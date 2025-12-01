@@ -100,6 +100,23 @@ struct TOTPSetupView: View {
                 }
             }
             
+            // Keychain access note
+            HStack(spacing: 8) {
+                Image(systemName: "info.circle")
+                    .foregroundColor(.blue)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Keychain Access")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                    Text("When prompted, click 'Always Allow' to avoid repeated keychain prompts")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+            }
+            .padding(8)
+            .background(Color.blue.opacity(0.1))
+            .cornerRadius(6)
+            
             Spacer()
             
             // Buttons
