@@ -45,3 +45,4 @@ resource_monitor_*.log
 # Build artifacts
 *.dSYM.zip
 *.dSYM
+*.dmg
