@@ -2,10 +2,10 @@
 .build/
 .swiftpm/
 Package.resolved
-
-# Xcode
 *.xcodeproj
 *.xcworkspace
+
+# Xcode
 xcuserdata/
 DerivedData/
 *.moved-aside
@@ -17,32 +17,82 @@ DerivedData/
 !default.mode2v3
 *.perspectivev3
 !default.perspectivev3
+*.hmap
+*.ipa
+*.xcscmblueprint
+*.xccheckout
+.xcode.env.local
 
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# App Bundle
 *.app
 
-# App-specific
+# Build Artifacts
+*.dSYM.zip
+*.dSYM
+*.dmg
+*.pkg
+*.zip
+
+# App-Specific Data (User Credentials & Sessions)
 sessions.json
 recent.json
+credentials.json
+*.credentials
 
-# Sensitive profile data
+# Sensitive Profile Data (AWS Account Info)
 *-profiles.json
-cimbth-profiles.json
-cloudkey-profiles.json
+*-config.json
+*.pem
+*.key
+*.p12
+*.mobileprovision
 
-# Monitoring and logs
+# Development & Testing
 monitor-*.sh
-resource_monitor_*.log
+test-*.sh
 *.log
+resource_monitor_*.log
+debug-*.txt
 
-# Temporary files
+# Temporary Files
 *.swp
 *.swo
 *~
 .*.sw?
+*.tmp
+*.bak
+*.orig
 
-# Build artifacts
-*.dSYM.zip
-*.dSYM
-*.dmg
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Documentation Build
+docs/_build/
+site/
+
+# Environment
+.env
+.env.local
+*.env
+
+# Code Coverage
+*.gcda
+*.gcno
+*.profdata
+*.profraw
+coverage/
