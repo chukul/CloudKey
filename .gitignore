@@ -26,6 +26,16 @@ DerivedData/
 sessions.json
 recent.json
 
+# Sensitive profile data
+*-profiles.json
+cimbth-profiles.json
+cloudkey-profiles.json
+
+# Monitoring and logs
+monitor-*.sh
+resource_monitor_*.log
+*.log
+
 # Temporary files
 *.swp
 *.swo
