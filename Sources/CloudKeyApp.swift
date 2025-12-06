@@ -4,6 +4,7 @@ import Combine
 @main
 struct CloudKeyApp: App {
     @StateObject private var store = SessionStore()
+    @StateObject private var updateChecker = UpdateChecker()
     
     var body: some Scene {
         WindowGroup {
@@ -12,6 +13,17 @@ struct CloudKeyApp: App {
                 .task {
                     print("🚀 Task running, setting up menu bar")
                     await MenuBarManager.shared.setup(store: SessionStore.shared)
+                    
+                    // Check for updates on launch
+                    await updateChecker.checkForUpdates()
+                }
+                .alert("Update Available", isPresented: $updateChecker.updateAvailable) {
+                    Button("Download Update") {
+                        updateChecker.openReleaseURL()
+                    }
+                    Button("Later", role: .cancel) {}
+                } message: {
+                    Text("Version \(updateChecker.latestVersion) is available.\n\n\(updateChecker.releaseNotes)")
                 }
         }
         .commands {
@@ -43,6 +55,24 @@ struct CloudKeyApp: App {
                     // Handled by sidebar
                 }
                 .keyboardShortcut(.delete, modifiers: [])
+            }
+            
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates...") {
+                    Task {
+                        await updateChecker.checkForUpdates()
+                        if !updateChecker.updateAvailable {
+                            // Show "You're up to date" alert
+                            let alert = NSAlert()
+                            alert.messageText = "You're up to date"
+                            alert.informativeText = "CloudKey \(updateChecker.getCurrentVersion()) is the latest version."
+                            alert.alertStyle = .informational
+                            alert.addButton(withTitle: "OK")
+                            alert.runModal()
+                        }
+                    }
+                }
+                .keyboardShortcut("u", modifiers: .command)
             }
         }
         
