@@ -536,12 +536,7 @@ struct SessionRow: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
-                    if session.status == .active, let expiration = session.expiration {
-                        Text("•")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                        TimeRemainingView(expiration: expiration)
-                    }
+                    // Time remaining removed from sidebar for cleaner UI
                 }
             }
             
